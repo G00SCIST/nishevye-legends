@@ -409,6 +409,9 @@ function openEditor(h) {
     inner += f('Прозвище', text('ef-nick', h.nick));
     inner += f('Титул', text('ef-title', h.title, 'Например: Хранитель маршрутов'));
     inner += f('Telegram (юзернейм без @)', text('ef-tg', h.tgUsername, 'например: GOOSCIST'));
+    if (h.claimed) {
+      inner += `<button type="button" id="ef-unbind" class="btn btn-ghost btn-sm">Отвязать Telegram — карточка станет свободной</button>`;
+    }
     inner += f('Ранг', `<select id="ef-rank" class="f-input">${RANK_ORDER.map(r =>
       `<option value="${r}" ${h.rank === r ? 'selected' : ''}>${RANKS[r].label}</option>`).join('')}</select>`);
     inner += f('Статус', `<select id="ef-status" class="f-input">
@@ -466,6 +469,23 @@ function openEditor(h) {
     if (!file) return;
     photoFlow(file, h, document.getElementById('ef-photo-note'));
     photoInput.value = '';
+  });
+
+  document.getElementById('ef-unbind')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await api('update_member', { id: h.id, fields: { telegram_id: null, tg_username: null } });
+      await refreshFromDB();
+      closeSheet();
+      closeModal();
+      toast('Карточка отвязана — теперь её можно привязать заново');
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+    }
   });
 
   document.getElementById('ef-roles')?.addEventListener('click', (e) => {

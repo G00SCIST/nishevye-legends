@@ -1095,10 +1095,8 @@ footer {
 /* кадрирование фото */
 .crop-box {
   position: relative;
-  width: auto;
   max-width: 100%;
-  max-height: 44dvh; /* рамка не должна съедать весь экран — кнопки и скролл остаются под пальцем */
-  aspect-ratio: 3 / 4;
+  /* пропорция и ширина задаются инлайном из cropStep — они всегда совпадают с выходным кадром */
   margin: 10px auto 0;
   overflow: hidden;
   border-radius: 14px;

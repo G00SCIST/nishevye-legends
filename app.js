@@ -520,10 +520,10 @@ function openEditor(h) {
 
 // два кадра из одного фото: вертикальный для карточки и широкий для профиля
 async function photoFlow(file, h, note) {
-  const portrait = await cropStep(file, '3 / 4', 900, 1200,
+  const portrait = await cropStep(file, 3, 4, 900, 1200,
     'Шаг 1 из 2 · кадр для карточки (вертикальный)', 'Дальше: широкий кадр');
   if (!portrait) return;
-  const wide = await cropStep(file, '3 / 2', 1200, 800,
+  const wide = await cropStep(file, 3, 2, 1200, 800,
     'Шаг 2 из 2 · кадр для профиля на телефоне (широкий)', 'Загрузить оба');
   if (!wide) return;
   note.textContent = 'Загружаю…';
@@ -540,13 +540,15 @@ async function photoFlow(file, h, note) {
 }
 
 // один шаг кадрирования: рамка нужной пропорции, палец двигает, ползунок зумит
-function cropStep(file, aspect, outW, outH, title, okLabel) {
+function cropStep(file, rw, rh, outW, outH, title, okLabel) {
   return new Promise((resolve) => {
     const box = document.getElementById('ef-crop');
     const url = URL.createObjectURL(file);
+    // ширина считается ОТ высоты, чтобы пропорция рамки всегда совпадала с выходным кадром
     box.innerHTML = `
       <p class="f-hint crop-title">${title}</p>
-      <div class="crop-box" id="crop-area" style="aspect-ratio: ${aspect}">
+      <div class="crop-box" id="crop-area"
+           style="aspect-ratio: ${rw} / ${rh}; width: min(100%, calc(44dvh * ${rw} / ${rh}))">
         <img id="crop-img" src="${url}" alt="" draggable="false">
       </div>
       <div class="crop-zoom-row">

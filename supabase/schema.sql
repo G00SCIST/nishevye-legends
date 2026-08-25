@@ -47,6 +47,19 @@ create table if not exists admins (
   note text
 );
 
+-- словарь ролей: управляется админом из настроек апки
+create table if not exists roles (
+  name text primary key
+);
+
+-- удалить роль из словаря и снять её со всех участников (только для edge-функции)
+create or replace function strip_role(role_name text) returns void
+language sql security definer set search_path = public as $$
+  update members set roles = array_remove(roles, role_name) where role_name = any(roles);
+  delete from roles where name = role_name;
+$$;
+revoke execute on function strip_role(text) from public, anon, authenticated;
+
 -- RLS: каталог читается всеми, писать снаружи нельзя вообще —
 -- все изменения идут через edge-функцию, которая сама проверяет подпись Телеграма.
 alter table members enable row level security;
@@ -55,6 +68,7 @@ alter table hikes enable row level security;
 alter table hike_peaks enable row level security;
 alter table hike_members enable row level security;
 alter table admins enable row level security;
+alter table roles enable row level security;
 
 drop policy if exists "public read members" on members;
 create policy "public read members" on members for select using (true);
@@ -66,6 +80,8 @@ drop policy if exists "public read hike_peaks" on hike_peaks;
 create policy "public read hike_peaks" on hike_peaks for select using (true);
 drop policy if exists "public read hike_members" on hike_members;
 create policy "public read hike_members" on hike_members for select using (true);
+drop policy if exists "public read roles" on roles;
+create policy "public read roles" on roles for select using (true);
 -- admins без политик: снаружи таблица невидима.
 
 insert into admins (telegram_id, note)

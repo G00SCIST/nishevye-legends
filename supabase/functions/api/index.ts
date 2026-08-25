@@ -154,6 +154,25 @@ Deno.serve(async (req) => {
       return json({ ok: true, hike_id: hike.id });
     }
 
+    case 'add_role': {
+      if (!isAdmin) return json({ error: 'admin only' }, 403);
+      const name = String(p.name ?? '').trim();
+      if (!name) return json({ error: 'name required' }, 400);
+      const { error } = await supa.from('roles').upsert({ name });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
+    case 'delete_role': {
+      // удаляет роль из словаря и снимает её со всех участников
+      if (!isAdmin) return json({ error: 'admin only' }, 403);
+      const name = String(p.name ?? '').trim();
+      if (!name) return json({ error: 'name required' }, 400);
+      const { error } = await supa.rpc('strip_role', { role_name: name });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
     case 'delete_hike': {
       if (!isAdmin) return json({ error: 'admin only' }, 403);
       const { error } = await supa.from('hikes').delete().eq('id', Number(p.id));

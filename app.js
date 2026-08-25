@@ -7,6 +7,7 @@ const API_URL = `${SUPA_URL}/functions/v1/api`;
 
 const tg = window.Telegram?.WebApp;
 let session = { isAdmin: false, memberId: null };
+let ROLES = []; // словарь ролей из базы; пока пуст — выводится из карточек
 
 // ── Элементы ───────────────────────────────────────────────
 const grid = document.getElementById('sections');
@@ -24,6 +25,7 @@ const rolesPanel = document.getElementById('roles-panel');
 const rolesCount = document.getElementById('roles-count');
 
 const fab = document.getElementById('fab');
+const fabSet = document.getElementById('fab-set');
 const sheet = document.getElementById('sheet');
 const sheetBody = sheet.querySelector('.sheet-body');
 const sheetClose = sheet.querySelector('.sheet-close');
@@ -38,13 +40,15 @@ async function loadData() {
     fetch(`${SUPA_URL}/rest/v1/${path}`, { headers: { apikey: SUPA_KEY } })
       .then(r => { if (!r.ok) throw new Error('REST ' + r.status); return r.json(); });
 
-  const [members, peaks, hikes, hp, hm] = await Promise.all([
+  const [members, peaks, hikes, hp, hm, roles] = await Promise.all([
     get('members?select=*&order=created_at'),
     get('peaks?select=*'),
     get('hikes?select=*&order=seq'),
     get('hike_peaks?select=*'),
     get('hike_members?select=*'),
+    get('roles?select=name'),
   ]);
+  ROLES = roles.map(r => r.name).sort((a, b) => a.localeCompare(b, 'ru'));
 
   HEROES = members.map(m => ({
     id: m.id, name: m.name, nick: m.nick, title: m.title, status: m.status,
@@ -368,7 +372,9 @@ function openEditor(h) {
       <option value="active" ${h.status === 'active' ? 'selected' : ''}>В строю</option>
       <option value="gone" ${h.status === 'gone' ? 'selected' : ''}>Легенда прошлого</option>
     </select>`);
-    inner += f('Роли (через запятую)', text('ef-roles', h.roles.join(', ')));
+    inner += f('Роли — тыкай, чтобы выдать или снять', `<div id="ef-roles" class="chips">${roleDict().map(r =>
+      `<button type="button" class="role-chip" data-r="${esc(r)}" aria-pressed="${h.roles.includes(r)}">${r}</button>`).join('')}</div>
+      <p class="f-hint">Добавить новую роль в перечень можно в настройках (шестерёнка).</p>`);
   } else {
     inner += f('Прозвище', text('ef-nick', h.nick));
   }
@@ -379,6 +385,12 @@ function openEditor(h) {
   inner += `<button id="ef-save" class="btn btn-primary">Сохранить</button>`;
 
   openSheet(inner);
+
+  document.getElementById('ef-roles')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-r]');
+    if (!chip) return;
+    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
+  });
 
   document.getElementById('ef-save').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -394,7 +406,7 @@ function openEditor(h) {
       title: v('ef-title') || null,
       rank: v('ef-rank'),
       status: v('ef-status'),
-      roles: (v('ef-roles') || '').split(',').map(s => s.trim()).filter(Boolean),
+      roles: [...document.querySelectorAll('#ef-roles [aria-pressed="true"]')].map(b => b.dataset.r),
     });
     btn.disabled = true;
     btn.textContent = 'Сохраняю…';
@@ -494,6 +506,70 @@ function openHikeForm() {
 
 fab.addEventListener('click', openHikeForm);
 
+// ── Настройки ролей (только Создатель) ─────────────────────
+
+function openSettings() {
+  const counts = new Map();
+  for (const h of HEROES) for (const r of h.roles) counts.set(r, (counts.get(r) || 0) + 1);
+  openSheet(`
+    <h3 class="sheet-title">Перечень ролей</h3>
+    <p class="f-hint">Удаление снимает роль у всех, у кого она есть. Тапни ×, потом «точно?» для подтверждения.</p>
+    <div id="rs-list" class="chips">${roleDict().map(r => `
+      <span class="chip role-manage">${r} <b>${counts.get(r) || 0}</b>
+        <button type="button" class="chip-x" data-r="${esc(r)}" aria-label="Удалить роль ${esc(r)}">×</button>
+      </span>`).join('')}</div>
+    <label class="f-label">Новая роль</label>
+    <div class="add-row">
+      <input id="rs-new" class="f-input" placeholder="Например: Штурман">
+      <button id="rs-add" class="btn btn-ghost">Добавить</button>
+    </div>`);
+
+  const list = document.getElementById('rs-list');
+  list.addEventListener('click', async (e) => {
+    const x = e.target.closest('.chip-x');
+    if (!x) return;
+    if (!x.classList.contains('armed')) {
+      list.querySelectorAll('.chip-x.armed').forEach(b => { b.classList.remove('armed'); b.textContent = '×'; });
+      x.classList.add('armed');
+      x.textContent = 'точно?';
+      setTimeout(() => { if (x.isConnected) { x.classList.remove('armed'); x.textContent = '×'; } }, 3000);
+      return;
+    }
+    x.disabled = true;
+    try {
+      await api('delete_role', { name: x.dataset.r });
+      await refreshFromDB();
+      toast(`Роль «${x.dataset.r}» удалена у всех`);
+      haptic('success');
+      openSettings();
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      x.disabled = false;
+    }
+  });
+
+  document.getElementById('rs-add').addEventListener('click', async (e) => {
+    const input = document.getElementById('rs-new');
+    const name = input.value.trim();
+    if (!name) { toast('Напиши название роли'); return; }
+    e.currentTarget.disabled = true;
+    try {
+      await api('add_role', { name });
+      await refreshFromDB();
+      toast(`Роль «${name}» добавлена`);
+      haptic('success');
+      openSettings();
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      e.currentTarget.disabled = false;
+    }
+  });
+}
+
+fabSet.addEventListener('click', openSettings);
+
 // ── Тост и хаптика ─────────────────────────────────────────
 
 let toastTimer;
@@ -533,10 +609,13 @@ searchEl.addEventListener('input', () => {
 
 // ── Фильтр по ролям ────────────────────────────────────────
 
+const roleDict = () => ROLES.length ? ROLES : [...new Set(HEROES.flatMap(h => h.roles))];
+
 function buildRolesPanel() {
   const counts = new Map();
   for (const h of HEROES) for (const r of h.roles) counts.set(r, (counts.get(r) || 0) + 1);
-  const roles = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ru'));
+  const roles = roleDict().map(r => [r, counts.get(r) || 0])
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ru'));
   rolesPanel.innerHTML =
     roles.map(([r, n]) =>
       `<button class="role-chip" data-role="${esc(r)}" aria-pressed="${state.roles.has(r)}">${r} <b>${n}</b></button>`).join('') +
@@ -588,6 +667,7 @@ async function initTelegram() {
     session = await api('me');
     if (session.isAdmin) {
       fab.hidden = false;
+      fabSet.hidden = false;
     } else if (!session.memberId) {
       toast('Найди свою карточку и нажми «Это моя карточка»', 5000);
     }

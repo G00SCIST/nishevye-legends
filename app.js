@@ -54,7 +54,7 @@ async function loadData() {
     id: m.id, name: m.name, nick: m.nick, title: m.title, status: m.status,
     rank: m.rank, roles: m.roles || [], place: m.place, quote: m.quote,
     photo: m.photo_url, photoWide: m.photo_wide_url, hue: m.hue, claimed: !!m.telegram_id,
-    tgUsername: m.tg_username,
+    tgUsername: m.tg_username, insta: m.insta, tiktok: m.tiktok,
   }));
   PEAKS = Object.fromEntries(peaks.map(p => [p.name, p.alt]));
   HIKES = hikes.map(k => ({
@@ -248,6 +248,23 @@ function openModal(id, sourceEl) {
   if (session.isAdmin || (session.memberId && session.memberId === h.id))
     actions.push('<button class="btn btn-ghost" data-act="edit">Редактировать</button>');
 
+  const socials = [];
+  if (h.tgUsername) socials.push(`
+    <button type="button" class="soc-link soc-tg" data-url="https://t.me/${esc(h.tgUsername)}" data-tg-native="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+      @${esc(h.tgUsername)}
+    </button>`);
+  if (h.insta) socials.push(`
+    <button type="button" class="soc-link soc-ig" data-url="https://instagram.com/${esc(h.insta)}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="0.5" fill="currentColor"/></svg>
+      ${esc(h.insta)}
+    </button>`);
+  if (h.tiktok) socials.push(`
+    <button type="button" class="soc-link soc-tt" data-url="https://www.tiktok.com/@${esc(h.tiktok)}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      ${esc(h.tiktok)}
+    </button>`);
+
   modalCard.className = `modal-card rank-${h.rank}`;
   modalCard.style.setProperty('--rc', rank.c);
   modalCard.querySelector('.modal-art-slot').innerHTML = artHTML(h, true);
@@ -255,6 +272,7 @@ function openModal(id, sourceEl) {
     <span class="rank-pill">${rank.label}</span>
     <h3 class="modal-name" id="modal-name">${fullName(h)}</h3>
     ${h.title ? `<p class="modal-title-line">${h.title}</p>` : ''}
+    ${socials.length ? `<div class="socials">${socials.join('')}</div>` : ''}
     ${h.quote ? `<blockquote class="modal-quote">${h.quote}</blockquote>` : ''}
 
     <div class="stat-tiles">
@@ -275,19 +293,15 @@ function openModal(id, sourceEl) {
     ${hikesBlock}
 
     <p class="modal-status">${status}</p>
-    ${h.tgUsername ? `
-      <button type="button" class="tg-link" data-tg="${esc(h.tgUsername)}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>
-        </svg>
-        @${esc(h.tgUsername)}
-      </button>` : ''}
     ${actions.length ? `<div class="modal-actions">${actions.join('')}</div>` : ''}`;
 
-  modalCard.querySelector('.tg-link')?.addEventListener('click', (e) => {
-    const url = 'https://t.me/' + e.currentTarget.dataset.tg;
-    if (tg?.openTelegramLink) tg.openTelegramLink(url);
-    else window.open(url, '_blank', 'noopener');
+  modalCard.querySelectorAll('.soc-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.url;
+      if (btn.dataset.tgNative && tg?.openTelegramLink) tg.openTelegramLink(url);
+      else if (tg?.openLink) tg.openLink(url);
+      else window.open(url, '_blank', 'noopener');
+    });
   });
 
   modalCard.querySelector('[data-act="claim"]')?.addEventListener('click', async (e) => {
@@ -423,6 +437,8 @@ function openEditor(h) {
   const nearest = HUES.reduce((best, hh) => Math.abs(hh - h.hue) < Math.abs(best - h.hue) ? hh : best, HUES[0]);
   inner += f('Цвет карточки', `<div id="ef-hue" class="hue-row">${HUES.map(hh =>
     `<button type="button" class="hue-dot" data-hue="${hh}" aria-pressed="${hh === nearest}" style="--hd:${hh}" aria-label="Оттенок ${hh}"></button>`).join('')}</div>`);
+  inner += f('Instagram (ник без @, по желанию)', text('ef-insta', h.insta));
+  inner += f('TikTok (ник без @, по желанию)', text('ef-tt', h.tiktok));
   inner += f('Где сейчас', text('ef-place', h.place));
   inner += f('Коронная фраза', text('ef-quote', h.quote));
   inner += `<button id="ef-save" class="btn btn-primary">Сохранить</button>`;
@@ -465,6 +481,8 @@ function openEditor(h) {
       nick: v('ef-nick') || null,
       place: v('ef-place') || null,
       quote: v('ef-quote') || null,
+      insta: (v('ef-insta') || '').replace(/^@/, '') || null,
+      tiktok: (v('ef-tt') || '').replace(/^@/, '') || null,
       hue: Number(document.querySelector('#ef-hue [aria-pressed="true"]')?.dataset.hue ?? h.hue),
     };
     if (admin) Object.assign(fields, {
@@ -572,8 +590,12 @@ function cropStep(file, aspect, outW, outH, title, okLabel) {
       y = drag.oy + (e.clientY - drag.py);
       apply();
     });
-    area.addEventListener('pointerup', () => { drag = null; });
-    area.addEventListener('pointercancel', () => { drag = null; });
+    const endDrag = (e) => {
+      drag = null;
+      try { area.releasePointerCapture(e.pointerId); } catch { /* уже отпущен */ }
+    };
+    area.addEventListener('pointerup', endDrag);
+    area.addEventListener('pointercancel', endDrag);
 
     box.querySelector('#crop-zoom').addEventListener('input', (e) => {
       // зумим к центру рамки, а не к углу

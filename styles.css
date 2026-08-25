@@ -868,25 +868,34 @@ footer {
 
 .modal-status { margin-top: 18px; font-size: 13px; color: var(--muted); }
 
-/* кликабельный телеграм героя */
-.tg-link {
+/* соцсети героя — рядом с именем */
+.socials { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+
+.soc-link {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 40px;
-  margin-top: 10px;
-  padding: 0 15px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 13px;
   border-radius: 999px;
-  border: 1px solid rgba(42, 171, 238, 0.45);
-  background: rgba(42, 171, 238, 0.12);
-  color: #7cc8f5;
-  font-size: 13.5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: #cfd6e2;
+  font-size: 12.5px;
   font-weight: 700;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.tg-link:hover { background: rgba(42, 171, 238, 0.22); color: #a8dcfa; }
-.tg-link svg { width: 15px; height: 15px; }
+.soc-link svg { width: 14px; height: 14px; }
+
+.soc-tg { border-color: rgba(42, 171, 238, 0.45); background: rgba(42, 171, 238, 0.12); color: #7cc8f5; }
+.soc-tg:hover { background: rgba(42, 171, 238, 0.22); color: #a8dcfa; }
+
+.soc-ig { border-color: rgba(225, 48, 108, 0.45); background: rgba(225, 48, 108, 0.1); color: #f087ac; }
+.soc-ig:hover { background: rgba(225, 48, 108, 0.2); color: #ffabc8; }
+
+.soc-tt { border-color: rgba(37, 244, 238, 0.35); background: rgba(37, 244, 238, 0.08); color: #6fe3e0; }
+.soc-tt:hover { background: rgba(37, 244, 238, 0.16); color: #a2f1ef; }
 
 .dot {
   display: inline-block;
@@ -1086,9 +1095,11 @@ footer {
 /* кадрирование фото */
 .crop-box {
   position: relative;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 44dvh; /* рамка не должна съедать весь экран — кнопки и скролл остаются под пальцем */
   aspect-ratio: 3 / 4;
-  margin-top: 10px;
+  margin: 10px auto 0;
   overflow: hidden;
   border-radius: 14px;
   border: 1px solid rgba(240, 180, 60, 0.45);

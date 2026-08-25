@@ -16,6 +16,8 @@ create table if not exists members (
   hue int not null default 210,
   telegram_id bigint unique,
   tg_username text,
+  insta text,
+  tiktok text,
   created_at timestamptz not null default now()
 );
 

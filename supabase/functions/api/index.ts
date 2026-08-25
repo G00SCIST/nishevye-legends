@@ -55,7 +55,7 @@ async function verifyInitData(initData: string): Promise<TgUser | null> {
 }
 
 // поля, которые обычный участник может менять у своей карточки
-const SELF_FIELDS = ['nick', 'quote', 'place', 'hue', 'photo_url'];
+const SELF_FIELDS = ['nick', 'quote', 'place', 'hue', 'photo_url', 'insta', 'tiktok'];
 // поля, которые админ может менять у любой
 const ADMIN_FIELDS = [...SELF_FIELDS, 'name', 'title', 'status', 'rank', 'roles', 'telegram_id', 'tg_username'];
 

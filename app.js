@@ -172,6 +172,7 @@ function openModal(id, sourceEl) {
       <div class="tile"><span class="tile-num">${myPeaks.length}</span><span class="tile-label">вершин</span></div>
       <div class="tile"><span class="tile-num">${ratingOf(h)}</span><span class="tile-label">рейтинг</span></div>
     </div>
+    <div class="rating-bar" role="img" aria-label="Рейтинг относительно лидера команды"><i></i></div>
 
     ${h.roles.length ? `
       <p class="modal-sub">Роли в пати</p>
@@ -190,6 +191,12 @@ function openModal(id, sourceEl) {
   document.body.classList.add('modal-open');
   requestAnimationFrame(() => modal.classList.add('open'));
   modalClose.focus();
+
+  // шкала: доля рейтинга героя от лидера команды, дорастает с анимацией
+  const maxRating = Math.max(...HEROES.map(ratingOf), 1);
+  const pct = Math.max(3, Math.round(ratingOf(h) / maxRating * 100));
+  const bar = modalCard.querySelector('.rating-bar i');
+  requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = pct + '%'; }));
 }
 
 function closeModal() {

@@ -38,9 +38,8 @@ const PEAKS = {
   'Боноорэ': 969,
   'Мизугаки': 2230,
   'Акадакэ': 2899,
-  'Цубакуро-дакэ': 2763,
   'Пунта дель Ранчи': null,
-  'Пунта Кватро Сорелле': null,
+  'Пунта Кватро Сорелле': 2600,
 };
 
 const HEROES = [
@@ -202,9 +201,9 @@ const HIKES = [
     crew: ['mira', 'marina', 'nastya', 'kianu', 'prohor', 'tima-instruktor', 'tima-sledopyt', 'arkadiy', 'maksim', 'mark'] },
   { name: 'Акадакэ', peaks: ['Акадакэ'],
     crew: ['albina', 'tima-sledopyt', 'prohor', 'anya-poteryashka', 'mark', 'marina', 'nastya', 'ulyana', 'vika-raskladushka', 'kianu'] },
-  { name: 'Цубакуро-дакэ', peaks: ['Цубакуро-дакэ'],
-    crew: ['matvey', 'nastya', 'ira', 'albina', 'ulyana', 'marina', 'aleksandr', 'ksyusha', 'kianu'] },
-  { name: 'Безымянная тропа', peaks: [],
+  { name: 'Митакэ — Одакэ', peaks: ['Митакэ', 'Одакэ'],
+    crew: ['kianu', 'mark', 'miroslav', 'andrey', 'matvey', 'nastya', 'ira', 'albina', 'ulyana', 'marina', 'aleksandr', 'ksyusha'] },
+  { name: 'Юцуги', peaks: [],
     crew: ['aleksandr', 'prohor', 'masha', 'anya-poteryashka', 'ksyusha', 'ulyana', 'vika-raskladushka', 'yura', 'nastya', 'mark', 'albina', 'kianu'] },
   { name: 'Пунта дель Ранчи (Италия)', peaks: ['Пунта дель Ранчи'],
     crew: ['kianu'] },

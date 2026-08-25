@@ -57,7 +57,7 @@ async function verifyInitData(initData: string): Promise<TgUser | null> {
 // поля, которые обычный участник может менять у своей карточки
 const SELF_FIELDS = ['nick', 'quote', 'place', 'hue', 'photo_url'];
 // поля, которые админ может менять у любой
-const ADMIN_FIELDS = [...SELF_FIELDS, 'name', 'title', 'status', 'rank', 'roles', 'telegram_id'];
+const ADMIN_FIELDS = [...SELF_FIELDS, 'name', 'title', 'status', 'rank', 'roles', 'telegram_id', 'tg_username'];
 
 const pick = (obj: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => keys.includes(k)));
@@ -81,11 +81,15 @@ Deno.serve(async (req) => {
   const isAdmin = !!adminRow;
 
   const { data: myMember } = await supa
-    .from('members').select('id').eq('telegram_id', user.id).maybeSingle();
+    .from('members').select('id, tg_username').eq('telegram_id', user.id).maybeSingle();
   const p = body.payload ?? {};
 
   switch (body.action) {
     case 'me':
+      // юзернеймы меняются — освежаем при каждом входе
+      if (myMember && user.username && myMember.tg_username !== user.username) {
+        await supa.from('members').update({ tg_username: user.username }).eq('id', myMember.id);
+      }
       return json({ isAdmin, memberId: myMember?.id ?? null, tg: user.id });
 
     case 'claim': {
@@ -99,7 +103,9 @@ Deno.serve(async (req) => {
       if (!isAdmin && myMember && myMember.id !== id)
         return json({ error: 'you already have a card' }, 409);
       const { error } = await supa
-        .from('members').update({ telegram_id: user.id }).eq('id', id);
+        .from('members')
+        .update({ telegram_id: user.id, tg_username: user.username ?? null })
+        .eq('id', id);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
     }

@@ -15,6 +15,7 @@ create table if not exists members (
   photo_wide_url text,
   hue int not null default 210,
   telegram_id bigint unique,
+  tg_username text,
   created_at timestamptz not null default now()
 );
 

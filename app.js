@@ -54,6 +54,7 @@ async function loadData() {
     id: m.id, name: m.name, nick: m.nick, title: m.title, status: m.status,
     rank: m.rank, roles: m.roles || [], place: m.place, quote: m.quote,
     photo: m.photo_url, photoWide: m.photo_wide_url, hue: m.hue, claimed: !!m.telegram_id,
+    tgUsername: m.tg_username,
   }));
   PEAKS = Object.fromEntries(peaks.map(p => [p.name, p.alt]));
   HIKES = hikes.map(k => ({
@@ -274,7 +275,20 @@ function openModal(id, sourceEl) {
     ${hikesBlock}
 
     <p class="modal-status">${status}</p>
+    ${h.tgUsername ? `
+      <button type="button" class="tg-link" data-tg="${esc(h.tgUsername)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>
+        </svg>
+        @${esc(h.tgUsername)}
+      </button>` : ''}
     ${actions.length ? `<div class="modal-actions">${actions.join('')}</div>` : ''}`;
+
+  modalCard.querySelector('.tg-link')?.addEventListener('click', (e) => {
+    const url = 'https://t.me/' + e.currentTarget.dataset.tg;
+    if (tg?.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, '_blank', 'noopener');
+  });
 
   modalCard.querySelector('[data-act="claim"]')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -380,6 +394,7 @@ function openEditor(h) {
     inner += f('Имя', text('ef-name', h.name));
     inner += f('Прозвище', text('ef-nick', h.nick));
     inner += f('Титул', text('ef-title', h.title, 'Например: Хранитель маршрутов'));
+    inner += f('Telegram (юзернейм без @)', text('ef-tg', h.tgUsername, 'например: GOOSCIST'));
     inner += f('Ранг', `<select id="ef-rank" class="f-input">${RANK_ORDER.map(r =>
       `<option value="${r}" ${h.rank === r ? 'selected' : ''}>${RANKS[r].label}</option>`).join('')}</select>`);
     inner += f('Статус', `<select id="ef-status" class="f-input">
@@ -455,6 +470,7 @@ function openEditor(h) {
     if (admin) Object.assign(fields, {
       name: v('ef-name') || h.name,
       title: v('ef-title') || null,
+      tg_username: (v('ef-tg') || '').replace(/^@/, '') || null,
       rank: v('ef-rank'),
       status: v('ef-status'),
       roles: [...document.querySelectorAll('#ef-roles [aria-pressed="true"]')].map(b => b.dataset.r),

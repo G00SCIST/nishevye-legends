@@ -145,10 +145,15 @@
   }
 
   let rafId = null;
+  let frame = 0;
   const t0 = performance.now();
 
   function loop(now) {
-    draw((now - t0) / 1000);
+    frame++;
+    // 30 fps достаточно для фона, а под открытой модалкой не рисуем вовсе
+    if (frame % 2 === 0 && !document.body.classList.contains('modal-open')) {
+      draw((now - t0) / 1000);
+    }
     rafId = requestAnimationFrame(loop);
   }
 

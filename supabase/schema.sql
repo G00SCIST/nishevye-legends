@@ -12,6 +12,7 @@ create table if not exists members (
   place text,
   quote text,
   photo_url text,
+  photo_wide_url text,
   hue int not null default 210,
   telegram_id bigint unique,
   created_at timestamptz not null default now()

@@ -220,21 +220,34 @@ Deno.serve(async (req) => {
     }
 
     case 'set_photo': {
-      // фото карточки: своё — любой, чужое — только админ
+      // фото карточки: своё — любой, чужое — только админ.
+      // data — вертикальный кадр (карточка), wide — широкий (шапка профиля на телефоне).
       const id = String(p.id ?? '');
       if (!isAdmin && myMember?.id !== id) return json({ error: 'not yours' }, 403);
-      const m = String(p.data ?? '').match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
-      if (!m) return json({ error: 'bad image' }, 400);
-      const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
-      if (bytes.length > 1_500_000) return json({ error: 'image too big' }, 413);
-      const path = `${id}.jpg`;
-      const up = await supa.storage.from('photos').upload(path, bytes, { contentType: m[1], upsert: true });
-      if (up.error) return json({ error: up.error.message }, 500);
-      const { data: pub } = supa.storage.from('photos').getPublicUrl(path);
-      const url = pub.publicUrl + '?t=' + Date.now();
-      const r = await supa.from('members').update({ photo_url: url }).eq('id', id);
+
+      const put = async (dataUrl: string, path: string): Promise<string | { err: string }> => {
+        const m = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+        if (!m) return { err: 'bad image' };
+        const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+        if (bytes.length > 1_500_000) return { err: 'image too big' };
+        const up = await supa.storage.from('photos').upload(path, bytes, { contentType: m[1], upsert: true });
+        if (up.error) return { err: up.error.message };
+        const { data: pub } = supa.storage.from('photos').getPublicUrl(path);
+        return pub.publicUrl + '?t=' + Date.now();
+      };
+
+      const url = await put(String(p.data ?? ''), `${id}.jpg`);
+      if (typeof url !== 'string') return json({ error: url.err }, 400);
+      let wideUrl: string | null = null;
+      if (p.wide) {
+        const w = await put(String(p.wide), `${id}_wide.jpg`);
+        if (typeof w !== 'string') return json({ error: w.err }, 400);
+        wideUrl = w;
+      }
+      const r = await supa.from('members')
+        .update({ photo_url: url, photo_wide_url: wideUrl }).eq('id', id);
       if (r.error) return json({ error: r.error.message }, 500);
-      return json({ ok: true, url });
+      return json({ ok: true, url, wide: wideUrl });
     }
 
     case 'delete_hike': {

@@ -53,7 +53,7 @@ async function loadData() {
   HEROES = members.map(m => ({
     id: m.id, name: m.name, nick: m.nick, title: m.title, status: m.status,
     rank: m.rank, roles: m.roles || [], place: m.place, quote: m.quote,
-    photo: m.photo_url, hue: m.hue, claimed: !!m.telegram_id,
+    photo: m.photo_url, photoWide: m.photo_wide_url, hue: m.hue, claimed: !!m.telegram_id,
   }));
   PEAKS = Object.fromEntries(peaks.map(p => [p.name, p.alt]));
   HIKES = hikes.map(k => ({
@@ -136,9 +136,16 @@ const ART_SVG = `
   </svg>`;
 
 function artHTML(h, big = false) {
-  const face = h.photo
-    ? `<img class="art-photo" src="${h.photo}" alt="" loading="lazy">`
-    : `${ART_SVG}<span class="art-initials" aria-hidden="true">${initialsOf(h)}</span>`;
+  let face;
+  if (h.photo) {
+    // в широкой шапке профиля на телефоне показываем широкий кадр, если он есть
+    const wide = big && h.photoWide
+      ? `<source media="(max-width: 640px)" srcset="${h.photoWide}">`
+      : '';
+    face = `<picture>${wide}<img class="art-photo" src="${h.photo}" alt="" loading="lazy"></picture>`;
+  } else {
+    face = `${ART_SVG}<span class="art-initials" aria-hidden="true">${initialsOf(h)}</span>`;
+  }
   return `<div class="art ${big ? 'art-big' : ''}" style="--h:${h.hue}; --rc:${RANKS[h.rank].c}">${face}</div>`;
 }
 
@@ -297,7 +304,7 @@ function openModal(id, sourceEl) {
   const maxRating = Math.max(...HEROES.map(ratingOf), 1);
   const pct = Math.max(3, Math.round(ratingOf(h) / maxRating * 100));
   const bar = modalCard.querySelector('.rating-bar i');
-  requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = pct + '%'; }));
+  requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transform = `scaleX(${pct / 100})`; }));
 }
 
 function closeModal() {
@@ -426,7 +433,7 @@ function openEditor(h) {
   photoInput.addEventListener('change', () => {
     const file = photoInput.files?.[0];
     if (!file) return;
-    buildCropper(file, h, document.getElementById('ef-photo-note'));
+    photoFlow(file, h, document.getElementById('ef-photo-note'));
     photoInput.value = '';
   });
 
@@ -477,101 +484,112 @@ function openEditor(h) {
   });
 }
 
-// кадрирование фото: рамка 3:4 (как карточка), палец двигает, ползунок зумит
-function buildCropper(file, h, note) {
-  const box = document.getElementById('ef-crop');
-  const url = URL.createObjectURL(file);
-  box.innerHTML = `
-    <div class="crop-box" id="crop-area"><img id="crop-img" src="${url}" alt="" draggable="false"></div>
-    <div class="crop-zoom-row">
-      <span class="f-hint">Зум</span>
-      <input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="Зум фото">
-    </div>
-    <div class="crop-actions">
-      <button type="button" id="crop-ok" class="btn btn-primary btn-sm">Обрезать и загрузить</button>
-      <button type="button" id="crop-cancel" class="btn btn-ghost btn-sm">Отмена</button>
-    </div>`;
-  box.scrollIntoView({ block: 'nearest' });
+// два кадра из одного фото: вертикальный для карточки и широкий для профиля
+async function photoFlow(file, h, note) {
+  const portrait = await cropStep(file, '3 / 4', 900, 1200,
+    'Шаг 1 из 2 · кадр для карточки (вертикальный)', 'Дальше: широкий кадр');
+  if (!portrait) return;
+  const wide = await cropStep(file, '3 / 2', 1200, 800,
+    'Шаг 2 из 2 · кадр для профиля на телефоне (широкий)', 'Загрузить оба');
+  if (!wide) return;
+  note.textContent = 'Загружаю…';
+  try {
+    await api('set_photo', { id: h.id, data: portrait, wide });
+    await refreshFromDB();
+    note.textContent = 'Фото обновлено!';
+    toast('Фото обновлено');
+    haptic('success');
+  } catch (err) {
+    note.textContent = 'Не вышло: ' + err.message;
+    haptic('error');
+  }
+}
 
-  const area = box.querySelector('#crop-area');
-  const img = box.querySelector('#crop-img');
-  let base = 1, scale = 1, x = 0, y = 0, iw = 0, ih = 0;
+// один шаг кадрирования: рамка нужной пропорции, палец двигает, ползунок зумит
+function cropStep(file, aspect, outW, outH, title, okLabel) {
+  return new Promise((resolve) => {
+    const box = document.getElementById('ef-crop');
+    const url = URL.createObjectURL(file);
+    box.innerHTML = `
+      <p class="f-hint crop-title">${title}</p>
+      <div class="crop-box" id="crop-area" style="aspect-ratio: ${aspect}">
+        <img id="crop-img" src="${url}" alt="" draggable="false">
+      </div>
+      <div class="crop-zoom-row">
+        <span class="f-hint">Зум</span>
+        <input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="Зум фото">
+      </div>
+      <div class="crop-actions">
+        <button type="button" id="crop-ok" class="btn btn-primary btn-sm">${okLabel}</button>
+        <button type="button" id="crop-cancel" class="btn btn-ghost btn-sm">Отмена</button>
+      </div>`;
+    box.scrollIntoView({ block: 'nearest' });
 
-  const apply = () => {
-    const s = base * scale;
-    x = Math.min(0, Math.max(area.clientWidth - iw * s, x));
-    y = Math.min(0, Math.max(area.clientHeight - ih * s, y));
-    img.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
-  };
+    const area = box.querySelector('#crop-area');
+    const img = box.querySelector('#crop-img');
+    let base = 1, scale = 1, x = 0, y = 0, iw = 0, ih = 0;
 
-  img.onload = () => {
-    iw = img.naturalWidth;
-    ih = img.naturalHeight;
-    base = Math.max(area.clientWidth / iw, area.clientHeight / ih);
-    x = (area.clientWidth - iw * base) / 2;
-    y = (area.clientHeight - ih * base) / 2;
-    apply();
-  };
+    const apply = () => {
+      const s = base * scale;
+      x = Math.min(0, Math.max(area.clientWidth - iw * s, x));
+      y = Math.min(0, Math.max(area.clientHeight - ih * s, y));
+      img.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+    };
 
-  let drag = null;
-  area.addEventListener('pointerdown', (e) => {
-    drag = { px: e.clientX, py: e.clientY, ox: x, oy: y };
-    area.setPointerCapture(e.pointerId);
-  });
-  area.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    x = drag.ox + (e.clientX - drag.px);
-    y = drag.oy + (e.clientY - drag.py);
-    apply();
-  });
-  area.addEventListener('pointerup', () => { drag = null; });
-  area.addEventListener('pointercancel', () => { drag = null; });
+    img.onload = () => {
+      iw = img.naturalWidth;
+      ih = img.naturalHeight;
+      base = Math.max(area.clientWidth / iw, area.clientHeight / ih);
+      x = (area.clientWidth - iw * base) / 2;
+      y = (area.clientHeight - ih * base) / 2;
+      apply();
+    };
 
-  box.querySelector('#crop-zoom').addEventListener('input', (e) => {
-    // зумим к центру рамки, а не к углу
-    const s0 = base * scale;
-    const cx = (area.clientWidth / 2 - x) / s0;
-    const cy = (area.clientHeight / 2 - y) / s0;
-    scale = Number(e.target.value);
-    const s1 = base * scale;
-    x = area.clientWidth / 2 - cx * s1;
-    y = area.clientHeight / 2 - cy * s1;
-    apply();
-  });
+    let drag = null;
+    area.addEventListener('pointerdown', (e) => {
+      drag = { px: e.clientX, py: e.clientY, ox: x, oy: y };
+      area.setPointerCapture(e.pointerId);
+    });
+    area.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      x = drag.ox + (e.clientX - drag.px);
+      y = drag.oy + (e.clientY - drag.py);
+      apply();
+    });
+    area.addEventListener('pointerup', () => { drag = null; });
+    area.addEventListener('pointercancel', () => { drag = null; });
 
-  box.querySelector('#crop-cancel').addEventListener('click', () => {
-    URL.revokeObjectURL(url);
-    box.innerHTML = '';
-  });
+    box.querySelector('#crop-zoom').addEventListener('input', (e) => {
+      // зумим к центру рамки, а не к углу
+      const s0 = base * scale;
+      const cx = (area.clientWidth / 2 - x) / s0;
+      const cy = (area.clientHeight / 2 - y) / s0;
+      scale = Number(e.target.value);
+      const s1 = base * scale;
+      x = area.clientWidth / 2 - cx * s1;
+      y = area.clientHeight / 2 - cy * s1;
+      apply();
+    });
 
-  box.querySelector('#crop-ok').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = 'Загружаю…';
-    try {
+    const finish = (result) => {
+      URL.revokeObjectURL(url);
+      box.innerHTML = '';
+      resolve(result);
+    };
+
+    box.querySelector('#crop-cancel').addEventListener('click', () => finish(null));
+    box.querySelector('#crop-ok').addEventListener('click', () => {
       const s = base * scale;
       const c = document.createElement('canvas');
-      c.width = 900;
-      c.height = 1200;
+      c.width = outW;
+      c.height = outH;
       c.getContext('2d').drawImage(
         img,
         -x / s, -y / s, area.clientWidth / s, area.clientHeight / s,
-        0, 0, 900, 1200,
+        0, 0, outW, outH,
       );
-      const data = c.toDataURL('image/jpeg', 0.9);
-      await api('set_photo', { id: h.id, data });
-      await refreshFromDB();
-      URL.revokeObjectURL(url);
-      box.innerHTML = '';
-      note.textContent = 'Фото обновлено!';
-      toast('Фото обновлено');
-      haptic('success');
-    } catch (err) {
-      note.textContent = 'Не вышло: ' + err.message;
-      haptic('error');
-      btn.disabled = false;
-      btn.textContent = 'Обрезать и загрузить';
-    }
+      finish(c.toDataURL('image/jpeg', 0.9));
+    });
   });
 }
 

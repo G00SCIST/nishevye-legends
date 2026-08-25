@@ -17,6 +17,31 @@ const RANKS = {
 
 const RANK_ORDER = ['creator', 'deity', 'legend', 'mythic', 'knight', 'pathfinder', 'recruit'];
 
+// Высоты вершин (м). 2500+ — эпик (радужная метка, больше всего рейтинга),
+// 2000–2500 — крепкая, ниже — обычная. null — высота пока неизвестна.
+const PEAKS = {
+  'Такао': 599,
+  'Дзимба': 855,
+  'Митакэ': 929,
+  'Одакэ': 1266,
+  'Сэнгэн': 802,
+  'Таканосу': 834,
+  'Танзава': 1491,
+  'Кинпу-сан': 2599,
+  'Кинтоки': 1212,
+  'Кумотори': 2017,
+  'Дзидзо-дакэ': 2764,
+  'Каннон-дакэ': 2841,
+  'Якуси-дакэ': 2780,
+  'Камикочи': 1500,
+  'Яцугатакэ': 2500,
+  'Боноорэ': 969,
+  'Мизугаки': 2230,
+  'Акадакэ': 2899,
+  'Пунта дель Ранчи': null,
+  'Пунта Кватро Сорелле': null,
+};
+
 const HEROES = [
   // ── Создатель ────────────────────────────────────────────
   { id: 'kianu', name: 'Киану', nick: null, status: 'active', rank: 'creator',
@@ -156,18 +181,18 @@ const HIKES = [
     crew: ['kianu', 'mark', 'viktor', 'sonya-birka'] },
   { name: 'Танзава', peaks: ['Танзава'],
     crew: ['kianu', 'viktor', 'mark', 'sonya-birka'] },
-  { name: 'Дзимба → Такао (второй заход)', peaks: ['Дзимба', 'Такао'],
+  { name: 'Дзимба → Такао', peaks: ['Дзимба', 'Такао'],
     crew: ['sonya-druid', 'sonya-birka', 'ira', 'kianu'] },
   { name: 'Кинпу-сан', peaks: ['Кинпу-сан'],
     crew: ['kianu', 'mark', 'sonya-druid', 'andrey'] },
   { name: 'Кинтоки-яма', peaks: ['Кинтоки'],
-    crew: ['kseniya', 'arkadiy', 'nastya', 'andrey', 'miroslav', 'mark'] },
+    crew: ['kianu', 'kseniya', 'arkadiy', 'nastya', 'andrey', 'miroslav', 'mark'] },
   { name: 'Кумотори', peaks: ['Кумотори'],
     crew: ['kianu', 'mark', 'andrey'] },
   { name: 'Хоо-дзан «Феникс»', peaks: ['Дзидзо-дакэ', 'Каннон-дакэ', 'Якуси-дакэ'],
     crew: ['ira', 'mark', 'tadahiro', 'tima-instruktor', 'nastya', 'kianu'] },
   { name: 'Камикочи', peaks: ['Камикочи'],
-    crew: ['kianu', 'ira', 'andrey', 'mark'] },
+    crew: ['andrey', 'mark'] },
   { name: 'Яцугатакэ', peaks: ['Яцугатакэ'],
     crew: ['kianu', 'mark', 'marina', 'anya-glina', 'natalya', 'nastya'] },
   { name: 'Боноорэ', peaks: ['Боноорэ'],
@@ -176,8 +201,12 @@ const HIKES = [
     crew: ['mira', 'marina', 'nastya', 'kianu', 'prohor', 'tima-instruktor', 'tima-sledopyt', 'arkadiy', 'maksim', 'mark'] },
   { name: 'Акадакэ', peaks: ['Акадакэ'],
     crew: ['albina', 'tima-sledopyt', 'prohor', 'anya-poteryashka', 'mark', 'marina', 'nastya', 'ulyana', 'vika-raskladushka', 'kianu'] },
-  { name: 'Мизугаки (второй заход)', peaks: ['Мизугаки'],
+  { name: 'Мизугаки', peaks: ['Мизугаки'],
     crew: ['matvey', 'nastya', 'ira', 'albina', 'ulyana', 'marina', 'aleksandr', 'ksyusha', 'kianu'] },
-  { name: '??? (название уточняется)', peaks: [],
+  { name: 'Безымянная тропа', peaks: [],
     crew: ['aleksandr', 'prohor', 'masha', 'anya-poteryashka', 'ksyusha', 'ulyana', 'vika-raskladushka', 'yura', 'nastya', 'mark', 'albina', 'kianu'] },
+  { name: 'Пунта дель Ранчи (Италия)', peaks: ['Пунта дель Ранчи'],
+    crew: ['kianu'] },
+  { name: 'Пунта Кватро Сорелле (Италия)', peaks: ['Пунта Кватро Сорелле'],
+    crew: ['kianu'] },
 ];

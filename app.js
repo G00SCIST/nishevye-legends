@@ -20,10 +20,35 @@ let lastFocused = null;
 
 const hikesFor = (h) => HIKES.filter(k => k.crew.includes(h.id));
 const hikesOf = (h) => hikesFor(h).length;
+
+// высота → уровень вершины и очки рейтинга
+const altOf = (p) => PEAKS[p] ?? 0;
+const tierOf = (p) => altOf(p) >= 2500 ? 'epic' : altOf(p) >= 2000 ? 'solid' : 'base';
+const PTS = { epic: 100, solid: 50, base: 20 };
+
+const ratingOf = (h) => hikesFor(h).reduce((s, k) =>
+  s + (k.peaks.length ? k.peaks.reduce((a, p) => a + PTS[tierOf(p)], 0) : PTS.base), 0);
+
+// покорённые вершины — только значимые, от 2000 м
 const peaksOf = (h) => {
   const m = new Map();
-  for (const k of hikesFor(h)) for (const p of k.peaks) m.set(p, (m.get(p) || 0) + 1);
-  return [...m.entries()].map(([n, t]) => ({ n, t })).sort((a, b) => b.t - a.t);
+  for (const k of hikesFor(h)) for (const p of k.peaks) {
+    if (altOf(p) >= 2000) m.set(p, (m.get(p) || 0) + 1);
+  }
+  return [...m.entries()].map(([n, t]) => ({ n, t }))
+    .sort((a, b) => altOf(b.n) - altOf(a.n));
+};
+
+// хайки героя, сгруппированные по маршруту: «Дзимба → Такао ×2»
+const hikesAggOf = (h) => {
+  const m = new Map();
+  for (const k of hikesFor(h)) {
+    const e = m.get(k.name) || { name: k.name, t: 0, epic: false };
+    e.t += 1;
+    e.epic = e.epic || k.peaks.some(p => tierOf(p) === 'epic');
+    m.set(k.name, e);
+  }
+  return [...m.values()];
 };
 const fullName = (h) => h.nick ? `${h.name} <i>«${h.nick}»</i>` : h.name;
 const initialsOf = (h) => h.nick ? (h.name[0] || '') + (h.nick[0] || '') : h.name.slice(0, 2);
@@ -45,7 +70,7 @@ function renderStats() {
   const total = HEROES.length;
   const active = HEROES.filter(h => h.status === 'active').length;
   const hikes = HIKES.length;
-  const peaks = new Set(HIKES.flatMap(k => k.peaks)).size;
+  const peaks = new Set(HIKES.flatMap(k => k.peaks).filter(p => altOf(p) >= 2000)).size;
   const stat = (n, label) => `
     <div class="stat">
       <span class="stat-num">${n}</span>
@@ -89,7 +114,7 @@ function render() {
   let html = '';
   for (const key of RANK_ORDER) {
     const heroes = HEROES.filter(h => h.rank === key).filter(statusMatch).filter(rolesMatch).filter(match)
-      .sort((a, b) => hikesOf(b) - hikesOf(a));
+      .sort((a, b) => ratingOf(b) - ratingOf(a));
     if (!heroes.length) continue;
     html += `
       <section class="roster-section ${key === 'deity' ? 'section-deity' : ''}" style="--sc:${RANKS[key].c}">
@@ -123,12 +148,14 @@ function openModal(id, sourceEl) {
     : `<span class="dot dot-gone"></span> Легенда прошлого · сейчас — ${h.place}`;
 
   const myPeaks = peaksOf(h);
-  const myHikes = hikesFor(h);
+  const myHikes = hikesAggOf(h);
   const peaksBlock = myPeaks.length
-    ? `<div class="chips">${myPeaks.map(p => `<span class="chip">${p.n} <b>×${p.t}</b></span>`).join('')}</div>`
+    ? `<div class="chips">${myPeaks.map(p =>
+        `<span class="chip chip-${tierOf(p.n)}">${p.n}${p.t > 1 ? ` <b>×${p.t}</b>` : ''}</span>`).join('')}</div>`
     : `<p class="peaks-empty">Пока ни одной — всё впереди.</p>`;
   const hikesBlock = myHikes.length
-    ? `<div class="chips">${myHikes.map(k => `<span class="chip">${k.name}</span>`).join('')}</div>`
+    ? `<div class="chips">${myHikes.map(k =>
+        `<span class="chip ${k.epic ? 'chip-epic' : ''}">${k.name}${k.t > 1 ? ` <b>×${k.t}</b>` : ''}</span>`).join('')}</div>`
     : `<p class="peaks-empty">Пока ни одного — всё впереди.</p>`;
 
   modalCard.className = `modal-card rank-${h.rank}`;
@@ -143,13 +170,14 @@ function openModal(id, sourceEl) {
     <div class="stat-tiles">
       <div class="tile"><span class="tile-num">${hikesOf(h)}</span><span class="tile-label">хайков</span></div>
       <div class="tile"><span class="tile-num">${myPeaks.length}</span><span class="tile-label">вершин</span></div>
+      <div class="tile"><span class="tile-num">${ratingOf(h)}</span><span class="tile-label">рейтинг</span></div>
     </div>
 
     ${h.roles.length ? `
       <p class="modal-sub">Роли в пати</p>
       <div class="chips">${h.roles.map(r => `<span class="chip chip-role">${r}</span>`).join('')}</div>` : ''}
 
-    <p class="modal-sub">Покорённые вершины</p>
+    <p class="modal-sub">Покорённые вершины · 2000 м+</p>
     ${peaksBlock}
 
     <p class="modal-sub">Хайки</p>

@@ -378,13 +378,60 @@ function openEditor(h) {
   } else {
     inner += f('Прозвище', text('ef-nick', h.nick));
   }
+  if (admin) {
+    inner += f('Хайки — ходил / не ходил', `<div id="ef-hikes" class="chips">${HIKES.map(k =>
+      `<button type="button" class="role-chip" data-k="${k.id}" aria-pressed="${k.crew.includes(h.id)}">${esc(k.name)}</button>`).join('')}</div>`);
+  }
+  inner += f('Фото', `
+    <div class="photo-row">
+      <button type="button" id="ef-photo-btn" class="btn btn-ghost btn-sm">${h.photo ? 'Заменить фото' : 'Загрузить фото'}</button>
+      <input id="ef-photo" type="file" accept="image/*" hidden>
+      <span id="ef-photo-note" class="f-hint">${h.photo ? 'Фото стоит' : 'Пока инициалы'}</span>
+    </div>`);
+  const HUES = [0, 25, 45, 90, 140, 175, 200, 225, 260, 290, 320, 345];
+  const nearest = HUES.reduce((best, hh) => Math.abs(hh - h.hue) < Math.abs(best - h.hue) ? hh : best, HUES[0]);
+  inner += f('Цвет карточки', `<div id="ef-hue" class="hue-row">${HUES.map(hh =>
+    `<button type="button" class="hue-dot" data-hue="${hh}" aria-pressed="${hh === nearest}" style="--hd:${hh}" aria-label="Оттенок ${hh}"></button>`).join('')}</div>`);
   inner += f('Где сейчас', text('ef-place', h.place));
   inner += f('Коронная фраза', text('ef-quote', h.quote));
-  inner += f('Оттенок карточки (0–360)',
-    `<input id="ef-hue" class="f-input" type="number" min="0" max="360" value="${h.hue}">`);
   inner += `<button id="ef-save" class="btn btn-primary">Сохранить</button>`;
 
   openSheet(inner);
+
+  document.getElementById('ef-hikes')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-k]');
+    if (!chip) return;
+    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
+  });
+
+  document.getElementById('ef-hue').addEventListener('click', (e) => {
+    const dot = e.target.closest('.hue-dot');
+    if (!dot) return;
+    document.querySelectorAll('#ef-hue .hue-dot').forEach(d => d.setAttribute('aria-pressed', 'false'));
+    dot.setAttribute('aria-pressed', 'true');
+  });
+
+  // фото грузится сразу, без «Сохранить»
+  const photoInput = document.getElementById('ef-photo');
+  document.getElementById('ef-photo-btn').addEventListener('click', () => photoInput.click());
+  photoInput.addEventListener('change', async () => {
+    const file = photoInput.files?.[0];
+    if (!file) return;
+    const note = document.getElementById('ef-photo-note');
+    note.textContent = 'Сжимаю…';
+    try {
+      const data = await shrinkImage(file, 700, 0.85);
+      note.textContent = 'Загружаю…';
+      await api('set_photo', { id: h.id, data });
+      await refreshFromDB();
+      note.textContent = 'Фото обновлено!';
+      toast('Фото обновлено');
+      haptic('success');
+    } catch (err) {
+      note.textContent = 'Не вышло: ' + err.message;
+      haptic('error');
+    }
+  });
 
   document.getElementById('ef-roles')?.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-r]');
@@ -399,7 +446,7 @@ function openEditor(h) {
       nick: v('ef-nick') || null,
       place: v('ef-place') || null,
       quote: v('ef-quote') || null,
-      hue: Math.min(360, Math.max(0, Number(v('ef-hue')) || h.hue)),
+      hue: Number(document.querySelector('#ef-hue [aria-pressed="true"]')?.dataset.hue ?? h.hue),
     };
     if (admin) Object.assign(fields, {
       name: v('ef-name') || h.name,
@@ -412,6 +459,13 @@ function openEditor(h) {
     btn.textContent = 'Сохраняю…';
     try {
       await api('update_member', { id: h.id, fields });
+      if (admin) {
+        const hikeIds = [...document.querySelectorAll('#ef-hikes [aria-pressed="true"]')].map(b => Number(b.dataset.k));
+        const before = HIKES.filter(k => k.crew.includes(h.id)).map(k => k.id).sort().join(',');
+        if (hikeIds.slice().sort().join(',') !== before) {
+          await api('set_member_hikes', { member_id: h.id, hike_ids: hikeIds });
+        }
+      }
       await refreshFromDB();
       closeSheet();
       closeModal();
@@ -426,13 +480,31 @@ function openEditor(h) {
   });
 }
 
+// уменьшаем фото на телефоне перед отправкой, чтобы летало
+function shrinkImage(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k);
+      c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('не смог прочитать файл'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 // ── Запись хайка (только Создатель) ────────────────────────
 
-function peakRowHTML() {
+function peakRowHTML(name = '', alt = '') {
   return `
     <div class="peak-row">
-      <input class="f-input pk-name" list="peak-list" placeholder="Гора">
-      <input class="f-input pk-alt" type="number" placeholder="Высота, м">
+      <input class="f-input pk-name" list="peak-list" placeholder="Гора" value="${esc(name)}">
+      <input class="f-input pk-alt" type="number" placeholder="Высота, м" value="${alt ?? ''}">
       <button type="button" class="row-x" aria-label="Убрать вершину">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -456,44 +528,19 @@ function openHikeForm() {
     <datalist id="peak-list">${Object.keys(PEAKS).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
   `);
 
-  const peaksBox = document.getElementById('hf-peaks');
-  document.getElementById('hf-add-peak').addEventListener('click', () => {
-    peaksBox.insertAdjacentHTML('beforeend', peakRowHTML());
-  });
-  peaksBox.addEventListener('click', (e) => {
-    const x = e.target.closest('.row-x');
-    if (x && peaksBox.children.length > 1) x.closest('.peak-row').remove();
-  });
-  peaksBox.addEventListener('input', (e) => {
-    // подставляем известную высоту автоматически
-    if (!e.target.classList.contains('pk-name')) return;
-    const alt = PEAKS[e.target.value.trim()];
-    const altInput = e.target.closest('.peak-row').querySelector('.pk-alt');
-    if (alt != null && !altInput.value) altInput.value = alt;
-  });
-  document.getElementById('hf-crew').addEventListener('click', (e) => {
-    const chip = e.target.closest('[data-m]');
-    if (!chip) return;
-    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
-  });
+  wireHikeForm();
 
   document.getElementById('hf-save').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
-    const name = document.getElementById('hf-name').value.trim();
-    const peaks = [...peaksBox.querySelectorAll('.peak-row')].map(r => ({
-      name: r.querySelector('.pk-name').value.trim(),
-      alt: Number(r.querySelector('.pk-alt').value) || null,
-    })).filter(p => p.name);
-    const member_ids = [...document.querySelectorAll('#hf-crew [aria-pressed="true"]')].map(b => b.dataset.m);
-    if (!name) { toast('Дай маршруту имя'); return; }
-    if (!member_ids.length) { toast('Отметь, кто ходил'); return; }
+    const data = readHikeForm();
+    if (!data) return;
     btn.disabled = true;
     btn.textContent = 'Записываю…';
     try {
-      await api('record_hike', { name, peaks, member_ids });
+      await api('record_hike', data);
       await refreshFromDB();
       closeSheet();
-      toast(`«${name}» записан — рейтинг обновился у ${member_ids.length} чел.`);
+      toast(`«${data.name}» записан — рейтинг обновился у ${data.member_ids.length} чел.`);
       haptic('success');
     } catch (err) {
       toast('Не вышло: ' + err.message);
@@ -522,7 +569,12 @@ function openSettings() {
     <div class="add-row">
       <input id="rs-new" class="f-input" placeholder="Например: Штурман">
       <button id="rs-add" class="btn btn-ghost">Добавить</button>
-    </div>`);
+    </div>
+    <label class="f-label">Хайки — тапни, чтобы править</label>
+    <div id="rs-hikes" class="hike-list">${HIKES.map(k => `
+      <button type="button" class="hike-row-btn" data-k="${k.id}">
+        <span>${esc(k.name)}</span><b>${k.crew.length} чел.</b>
+      </button>`).join('')}</div>`);
 
   const list = document.getElementById('rs-list');
   list.addEventListener('click', async (e) => {
@@ -566,6 +618,115 @@ function openSettings() {
       e.currentTarget.disabled = false;
     }
   });
+
+  document.getElementById('rs-hikes').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-k]');
+    if (!btn) return;
+    const hike = HIKES.find(k => k.id === Number(btn.dataset.k));
+    if (hike) openHikeEdit(hike);
+  });
+}
+
+// ── Правка существующего хайка ─────────────────────────────
+
+function openHikeEdit(hike) {
+  const activeFirst = [...HEROES].sort((a, b) =>
+    (a.status === 'gone') - (b.status === 'gone') || a.name.localeCompare(b.name, 'ru'));
+  openSheet(`
+    <h3 class="sheet-title">Править хайк</h3>
+    <label class="f-label">Маршрут</label>
+    <input id="hf-name" class="f-input" value="${esc(hike.name)}">
+    <label class="f-label">Вершины и высоты</label>
+    <div id="hf-peaks">${hike.peaks.length
+      ? hike.peaks.map(p => peakRowHTML(p, PEAKS[p] ?? '')).join('')
+      : peakRowHTML()}</div>
+    <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ ещё вершина</button>
+    <label class="f-label">Кто ходил</label>
+    <div id="hf-crew" class="chips">${activeFirst.map(h =>
+      `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="${hike.crew.includes(h.id)}">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
+    <button id="hf-save" class="btn btn-primary">Сохранить хайк</button>
+    <button id="hf-del" type="button" class="btn btn-ghost btn-danger">Удалить хайк</button>
+    <datalist id="peak-list">${Object.keys(PEAKS).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+  `);
+
+  wireHikeForm();
+
+  document.getElementById('hf-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const data = readHikeForm();
+    if (!data) return;
+    btn.disabled = true;
+    btn.textContent = 'Сохраняю…';
+    try {
+      await api('update_hike', { id: hike.id, ...data });
+      await refreshFromDB();
+      closeSheet();
+      toast(`«${data.name}» обновлён`);
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Сохранить хайк';
+    }
+  });
+
+  const del = document.getElementById('hf-del');
+  del.addEventListener('click', async () => {
+    if (!del.classList.contains('armed')) {
+      del.classList.add('armed');
+      del.textContent = 'Точно удалить? Хайк пропадёт у всех';
+      setTimeout(() => { if (del.isConnected) { del.classList.remove('armed'); del.textContent = 'Удалить хайк'; } }, 3500);
+      return;
+    }
+    del.disabled = true;
+    try {
+      await api('delete_hike', { id: hike.id });
+      await refreshFromDB();
+      toast('Хайк удалён');
+      haptic('success');
+      openSettings();
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      del.disabled = false;
+    }
+  });
+}
+
+// общая обвязка формы хайка: добавление/удаление вершин, автоподстановка высот, чипы состава
+function wireHikeForm() {
+  const peaksBox = document.getElementById('hf-peaks');
+  document.getElementById('hf-add-peak').addEventListener('click', () => {
+    peaksBox.insertAdjacentHTML('beforeend', peakRowHTML());
+  });
+  peaksBox.addEventListener('click', (e) => {
+    const x = e.target.closest('.row-x');
+    if (x && peaksBox.children.length > 1) x.closest('.peak-row').remove();
+  });
+  peaksBox.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('pk-name')) return;
+    const alt = PEAKS[e.target.value.trim()];
+    const altInput = e.target.closest('.peak-row').querySelector('.pk-alt');
+    if (alt != null && !altInput.value) altInput.value = alt;
+  });
+  document.getElementById('hf-crew').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-m]');
+    if (!chip) return;
+    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
+  });
+}
+
+function readHikeForm() {
+  const name = document.getElementById('hf-name').value.trim();
+  const peaks = [...document.querySelectorAll('#hf-peaks .peak-row')].map(r => ({
+    name: r.querySelector('.pk-name').value.trim(),
+    alt: Number(r.querySelector('.pk-alt').value) || null,
+  })).filter(p => p.name);
+  const member_ids = [...document.querySelectorAll('#hf-crew [aria-pressed="true"]')].map(b => b.dataset.m);
+  if (!name) { toast('Дай маршруту имя'); return null; }
+  if (!member_ids.length) { toast('Отметь, кто ходил'); return null; }
+  return { name, peaks, member_ids };
 }
 
 fabSet.addEventListener('click', openSettings);
@@ -662,6 +823,20 @@ async function initTelegram() {
   tg.expand();
   tg.setHeaderColor('#0a0d13');
   tg.setBackgroundColor('#0a0d13');
+  tg.disableVerticalSwipes?.(); // свайп вниз не должен закрывать апку при скролле
+
+  // кнопка «на весь экран», если телега это умеет
+  const fsBtn = document.getElementById('fs-btn');
+  if (typeof tg.requestFullscreen === 'function') {
+    fsBtn.hidden = false;
+    fsBtn.addEventListener('click', () => {
+      try { tg.isFullscreen ? tg.exitFullscreen() : tg.requestFullscreen(); } catch { /* старая телега */ }
+    });
+    tg.onEvent?.('fullscreenChanged', () => {
+      document.body.classList.toggle('tg-fullscreen', !!tg.isFullscreen);
+    });
+  }
+
   if (!tg.initData) return; // открыто в обычном браузере — только просмотр
   try {
     session = await api('me');

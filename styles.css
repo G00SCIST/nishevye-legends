@@ -644,6 +644,7 @@ footer {
   max-height: 86dvh;
   display: grid;
   grid-template-columns: 236px 1fr;
+  grid-template-rows: minmax(0, 1fr); /* иначе контент обрезается вместо скролла */
   overflow: hidden;
   border-radius: 20px;
   border: 1px solid color-mix(in srgb, var(--rc) 40%, transparent);
@@ -674,7 +675,7 @@ footer {
 
 .art-big .art-initials { font-size: 58px; top: 40%; }
 
-.modal-body { padding: 24px 26px 26px; overflow-y: auto; }
+.modal-body { padding: 24px 26px 26px; overflow-y: auto; min-height: 0; -webkit-overflow-scrolling: touch; }
 
 .modal-close {
   position: absolute;
@@ -857,6 +858,7 @@ footer {
 
   .modal-card {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr); /* арт фиксирован, тело скроллится */
     width: 100%;
     max-height: 92dvh;
     border-radius: 20px 20px 0 0;
@@ -983,6 +985,79 @@ footer {
 }
 
 .add-row .btn { margin-top: 0; }
+
+.hike-list { display: flex; flex-direction: column; gap: 6px; }
+
+.hike-row-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+}
+
+.hike-row-btn b { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.hike-row-btn:hover { background: var(--surface-2); }
+
+.btn-danger { width: 100%; margin-top: 10px; color: #f08a8a; }
+.btn-danger.armed { background: var(--red); color: #fff; border-color: transparent; }
+
+.hue-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.hue-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: hsl(var(--hd) 60% 45%);
+  border: 2px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.hue-dot[aria-pressed='true'] {
+  border-color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 12px hsl(var(--hd) 70% 50% / 0.7);
+}
+
+.photo-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.photo-row .btn { margin-top: 0; }
+.photo-row .f-hint { margin: 0; }
+
+.fs-btn {
+  position: fixed;
+  top: calc(10px + var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px));
+  right: 12px;
+  z-index: 55;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 25, 0.7);
+  backdrop-filter: blur(8px);
+  color: var(--muted);
+}
+
+.fs-btn:hover { color: #fff; }
+.fs-btn svg { width: 17px; height: 17px; }
+.fs-btn[hidden] { display: none; }
+
+/* в полноэкранном режиме контент не должен лезть под статусбар */
+body.tg-fullscreen .hero {
+  padding-top: calc(56px + var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px));
+}
+
+body.tg-fullscreen .controls {
+  top: calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px));
+}
 
 #sheet {
   position: fixed;

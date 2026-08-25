@@ -173,6 +173,70 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    case 'update_hike': {
+      // полная правка хайка: имя, вершины (с высотами) и состав
+      if (!isAdmin) return json({ error: 'admin only' }, 403);
+      const id = Number(p.id);
+      const name = String(p.name ?? '').trim();
+      const peaks = (p.peaks ?? []) as { name: string; alt?: number | null }[];
+      const memberIds = (p.member_ids ?? []) as string[];
+      if (!id || !name || !memberIds.length) return json({ error: 'id, name and crew required' }, 400);
+      for (const pk of peaks) {
+        const { error } = await supa.from('peaks')
+          .upsert({ name: pk.name.trim(), alt: pk.alt ?? null });
+        if (error) return json({ error: error.message }, 500);
+      }
+      let r = await supa.from('hikes').update({ name }).eq('id', id);
+      if (r.error) return json({ error: r.error.message }, 500);
+      r = await supa.from('hike_peaks').delete().eq('hike_id', id);
+      if (r.error) return json({ error: r.error.message }, 500);
+      if (peaks.length) {
+        r = await supa.from('hike_peaks')
+          .insert(peaks.map((pk) => ({ hike_id: id, peak: pk.name.trim() })));
+        if (r.error) return json({ error: r.error.message }, 500);
+      }
+      r = await supa.from('hike_members').delete().eq('hike_id', id);
+      if (r.error) return json({ error: r.error.message }, 500);
+      r = await supa.from('hike_members')
+        .insert(memberIds.map((m) => ({ hike_id: id, member_id: m })));
+      if (r.error) return json({ error: r.error.message }, 500);
+      return json({ ok: true });
+    }
+
+    case 'set_member_hikes': {
+      // галочки «ходил / не ходил» из карточки героя
+      if (!isAdmin) return json({ error: 'admin only' }, 403);
+      const memberId = String(p.member_id ?? '');
+      const hikeIds = ((p.hike_ids ?? []) as unknown[]).map(Number).filter(Boolean);
+      if (!memberId) return json({ error: 'member_id required' }, 400);
+      let r = await supa.from('hike_members').delete().eq('member_id', memberId);
+      if (r.error) return json({ error: r.error.message }, 500);
+      if (hikeIds.length) {
+        r = await supa.from('hike_members')
+          .insert(hikeIds.map((hid) => ({ hike_id: hid, member_id: memberId })));
+        if (r.error) return json({ error: r.error.message }, 500);
+      }
+      return json({ ok: true });
+    }
+
+    case 'set_photo': {
+      // фото карточки: своё — любой, чужое — только админ
+      const id = String(p.id ?? '');
+      if (!isAdmin && myMember?.id !== id) return json({ error: 'not yours' }, 403);
+      const m = String(p.data ?? '').match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/);
+      if (!m) return json({ error: 'bad image' }, 400);
+      const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+      if (bytes.length > 1_500_000) return json({ error: 'image too big' }, 413);
+      const path = `${id}.jpg`;
+      const up = await supa.storage.from('photos').upload(path, bytes, { contentType: m[1], upsert: true });
+      if (up.error) return json({ error: up.error.message }, 500);
+      const { data: pub } = supa.storage.from('photos').getPublicUrl(path);
+      const url = pub.publicUrl + '?t=' + Date.now();
+      const r = await supa.from('members').update({ photo_url: url }).eq('id', id);
+      if (r.error) return json({ error: r.error.message }, 500);
+      return json({ ok: true, url });
+    }
+
     case 'delete_hike': {
       if (!isAdmin) return json({ error: 'admin only' }, 403);
       const { error } = await supa.from('hikes').delete().eq('id', Number(p.id));

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=10">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -53,7 +53,27 @@
     <p>Никого не нашли. Попробуй другое имя.</p>
   </div>
 
-  <footer>LEGENDS · прототип v0.8 · Legends of Nishevye</footer>
+  <footer>LEGENDS · v1.0 · Legends of Nishevye</footer>
+
+  <button id="fab" class="fab" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true">
+      <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+    </svg>
+    Записать хайк
+  </button>
+
+  <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+
+  <div id="sheet" hidden role="dialog" aria-modal="true" aria-label="Форма">
+    <div class="sheet-card">
+      <button class="sheet-close" aria-label="Закрыть форму">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+      <div class="sheet-body"></div>
+    </div>
+  </div>
 
   <div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-name">
     <div class="modal-card">
@@ -67,8 +87,8 @@
     </div>
   </div>
 
-  <script src="bg.js?v=8"></script>
-  <script src="data.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="bg.js?v=10"></script>
+  <script src="data.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

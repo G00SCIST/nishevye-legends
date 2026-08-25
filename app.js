@@ -1,5 +1,14 @@
 'use strict';
 
+// ── Конфиг ─────────────────────────────────────────────────
+const SUPA_URL = 'https://kaqzxmmjcmregofjnkkb.supabase.co';
+const SUPA_KEY = 'sb_publishable_NwAGBGzSk0A-6h9fb-7nuQ_eN0um_n4'; // публичный, можно светить
+const API_URL = `${SUPA_URL}/functions/v1/api`;
+
+const tg = window.Telegram?.WebApp;
+let session = { isAdmin: false, memberId: null };
+
+// ── Элементы ───────────────────────────────────────────────
 const grid = document.getElementById('sections');
 const statsEl = document.getElementById('stats');
 const emptyEl = document.getElementById('empty');
@@ -14,10 +23,65 @@ const rolesToggle = document.getElementById('roles-toggle');
 const rolesPanel = document.getElementById('roles-panel');
 const rolesCount = document.getElementById('roles-count');
 
+const fab = document.getElementById('fab');
+const sheet = document.getElementById('sheet');
+const sheetBody = sheet.querySelector('.sheet-body');
+const sheetClose = sheet.querySelector('.sheet-close');
+
 const state = { tab: 'all', q: '', roles: new Set() };
 let firstRender = true;
 let lastFocused = null;
 
+// ── Данные: живая база, data.js — запасной вариант ─────────
+async function loadData() {
+  const get = (path) =>
+    fetch(`${SUPA_URL}/rest/v1/${path}`, { headers: { apikey: SUPA_KEY } })
+      .then(r => { if (!r.ok) throw new Error('REST ' + r.status); return r.json(); });
+
+  const [members, peaks, hikes, hp, hm] = await Promise.all([
+    get('members?select=*&order=created_at'),
+    get('peaks?select=*'),
+    get('hikes?select=*&order=seq'),
+    get('hike_peaks?select=*'),
+    get('hike_members?select=*'),
+  ]);
+
+  HEROES = members.map(m => ({
+    id: m.id, name: m.name, nick: m.nick, title: m.title, status: m.status,
+    rank: m.rank, roles: m.roles || [], place: m.place, quote: m.quote,
+    photo: m.photo_url, hue: m.hue, claimed: !!m.telegram_id,
+  }));
+  PEAKS = Object.fromEntries(peaks.map(p => [p.name, p.alt]));
+  HIKES = hikes.map(k => ({
+    id: k.id, name: k.name,
+    peaks: hp.filter(x => x.hike_id === k.id).map(x => x.peak),
+    crew: hm.filter(x => x.hike_id === k.id).map(x => x.member_id),
+  }));
+}
+
+async function refreshFromDB() {
+  try {
+    await loadData();
+    buildRolesPanel();
+    renderStats();
+    render();
+  } catch (e) {
+    console.warn('база недоступна, работаем на встроенных данных', e);
+  }
+}
+
+async function api(action, payload) {
+  const r = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, initData: tg?.initData || '', payload }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+
+// ── Подсчёты ───────────────────────────────────────────────
 const hikesFor = (h) => HIKES.filter(k => k.crew.includes(h.id));
 const hikesOf = (h) => hikesFor(h).length;
 
@@ -50,6 +114,7 @@ const hikesAggOf = (h) => {
   }
   return [...m.values()];
 };
+
 const fullName = (h) => h.nick ? `${h.name} <i>«${h.nick}»</i>` : h.name;
 const initialsOf = (h) => h.nick ? (h.name[0] || '') + (h.nick[0] || '') : h.name.slice(0, 2);
 
@@ -134,7 +199,7 @@ function render() {
   });
 }
 
-// ── Модалка ────────────────────────────────────────────────
+// ── Модалка героя ──────────────────────────────────────────
 
 let pendingClose = null;
 
@@ -157,6 +222,12 @@ function openModal(id, sourceEl) {
     ? `<div class="chips">${myHikes.map(k =>
         `<span class="chip ${k.epic ? 'chip-epic' : ''}">${k.name}${k.t > 1 ? ` <b>×${k.t}</b>` : ''}</span>`).join('')}</div>`
     : `<p class="peaks-empty">Пока ни одного — всё впереди.</p>`;
+
+  const actions = [];
+  if (tg?.initData && !session.isAdmin && !session.memberId && !h.claimed)
+    actions.push('<button class="btn btn-ghost" data-act="claim">Это моя карточка</button>');
+  if (session.isAdmin || (session.memberId && session.memberId === h.id))
+    actions.push('<button class="btn btn-ghost" data-act="edit">Редактировать</button>');
 
   modalCard.className = `modal-card rank-${h.rank}`;
   modalCard.style.setProperty('--rc', rank.c);
@@ -184,7 +255,26 @@ function openModal(id, sourceEl) {
     <p class="modal-sub">Хайки</p>
     ${hikesBlock}
 
-    <p class="modal-status">${status}</p>`;
+    <p class="modal-status">${status}</p>
+    ${actions.length ? `<div class="modal-actions">${actions.join('')}</div>` : ''}`;
+
+  modalCard.querySelector('[data-act="claim"]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      await api('claim', { member_id: h.id });
+      session.memberId = h.id;
+      await refreshFromDB();
+      closeModal();
+      toast('Карточка твоя! Теперь можешь её редактировать.');
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+    }
+  });
+  modalCard.querySelector('[data-act="edit"]')?.addEventListener('click', () => openEditor(h));
 
   lastFocused = sourceEl;
   modal.hidden = false;
@@ -201,7 +291,7 @@ function openModal(id, sourceEl) {
 
 function closeModal() {
   modal.classList.remove('open');
-  document.body.classList.remove('modal-open');
+  if (sheet.hidden) document.body.classList.remove('modal-open');
   const done = () => {
     modal.hidden = true;
     modal.removeEventListener('transitionend', done);
@@ -217,10 +307,38 @@ function closeModal() {
 modalClose.addEventListener('click', closeModal);
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
+// ── Шторка с формами (правка, запись хайка) ────────────────
+
+let sheetCloseTimer = null;
+
+function openSheet(html) {
+  clearTimeout(sheetCloseTimer); // отложенное закрытие не должно спрятать новую шторку
+  sheet.classList.remove('open');
+  sheetBody.innerHTML = html;
+  sheet.hidden = false;
+  document.body.classList.add('modal-open');
+  requestAnimationFrame(() => sheet.classList.add('open'));
+  sheetClose.focus();
+}
+
+function closeSheet() {
+  sheet.classList.remove('open');
+  clearTimeout(sheetCloseTimer);
+  sheetCloseTimer = setTimeout(() => {
+    sheet.hidden = true;
+    if (modal.hidden) document.body.classList.remove('modal-open');
+  }, 200);
+}
+
+sheetClose.addEventListener('click', closeSheet);
+sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+
 document.addEventListener('keydown', (e) => {
-  if (modal.hidden) return;
-  if (e.key === 'Escape') closeModal();
-  if (e.key === 'Tab') {
+  if (e.key === 'Escape') {
+    if (!sheet.hidden) return closeSheet();
+    if (!modal.hidden) return closeModal();
+  }
+  if (!modal.hidden && sheet.hidden && e.key === 'Tab') {
     // фокус не должен уходить за пределы модалки
     const focusables = modal.querySelectorAll('button, [href]');
     const first = focusables[0], last = focusables[focusables.length - 1];
@@ -228,6 +346,170 @@ document.addEventListener('keydown', (e) => {
     else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   }
 });
+
+// ── Редактор карточки ──────────────────────────────────────
+
+const esc = (s) => String(s ?? '').replace(/"/g, '&quot;');
+
+function openEditor(h) {
+  const admin = session.isAdmin;
+  const f = (label, html) => `<label class="f-label">${label}</label>${html}`;
+  const text = (id, val, ph = '') =>
+    `<input id="${id}" class="f-input" value="${esc(val)}" placeholder="${ph}">`;
+
+  let inner = `<h3 class="sheet-title">${h.name} — правка</h3>`;
+  if (admin) {
+    inner += f('Имя', text('ef-name', h.name));
+    inner += f('Прозвище', text('ef-nick', h.nick));
+    inner += f('Титул', text('ef-title', h.title, 'Например: Хранитель маршрутов'));
+    inner += f('Ранг', `<select id="ef-rank" class="f-input">${RANK_ORDER.map(r =>
+      `<option value="${r}" ${h.rank === r ? 'selected' : ''}>${RANKS[r].label}</option>`).join('')}</select>`);
+    inner += f('Статус', `<select id="ef-status" class="f-input">
+      <option value="active" ${h.status === 'active' ? 'selected' : ''}>В строю</option>
+      <option value="gone" ${h.status === 'gone' ? 'selected' : ''}>Легенда прошлого</option>
+    </select>`);
+    inner += f('Роли (через запятую)', text('ef-roles', h.roles.join(', ')));
+  } else {
+    inner += f('Прозвище', text('ef-nick', h.nick));
+  }
+  inner += f('Где сейчас', text('ef-place', h.place));
+  inner += f('Коронная фраза', text('ef-quote', h.quote));
+  inner += f('Оттенок карточки (0–360)',
+    `<input id="ef-hue" class="f-input" type="number" min="0" max="360" value="${h.hue}">`);
+  inner += `<button id="ef-save" class="btn btn-primary">Сохранить</button>`;
+
+  openSheet(inner);
+
+  document.getElementById('ef-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const v = (id) => document.getElementById(id)?.value.trim();
+    const fields = {
+      nick: v('ef-nick') || null,
+      place: v('ef-place') || null,
+      quote: v('ef-quote') || null,
+      hue: Math.min(360, Math.max(0, Number(v('ef-hue')) || h.hue)),
+    };
+    if (admin) Object.assign(fields, {
+      name: v('ef-name') || h.name,
+      title: v('ef-title') || null,
+      rank: v('ef-rank'),
+      status: v('ef-status'),
+      roles: (v('ef-roles') || '').split(',').map(s => s.trim()).filter(Boolean),
+    });
+    btn.disabled = true;
+    btn.textContent = 'Сохраняю…';
+    try {
+      await api('update_member', { id: h.id, fields });
+      await refreshFromDB();
+      closeSheet();
+      closeModal();
+      toast('Сохранено');
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Сохранить';
+    }
+  });
+}
+
+// ── Запись хайка (только Создатель) ────────────────────────
+
+function peakRowHTML() {
+  return `
+    <div class="peak-row">
+      <input class="f-input pk-name" list="peak-list" placeholder="Гора">
+      <input class="f-input pk-alt" type="number" placeholder="Высота, м">
+      <button type="button" class="row-x" aria-label="Убрать вершину">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>`;
+}
+
+function openHikeForm() {
+  const activeFirst = [...HEROES].sort((a, b) =>
+    (a.status === 'gone') - (b.status === 'gone') || a.name.localeCompare(b.name, 'ru'));
+  openSheet(`
+    <h3 class="sheet-title">Записать хайк</h3>
+    <label class="f-label">Маршрут</label>
+    <input id="hf-name" class="f-input" placeholder="Например: Дзимба → Такао">
+    <label class="f-label">Вершины (можно несколько, можно ни одной)</label>
+    <div id="hf-peaks">${peakRowHTML()}</div>
+    <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ ещё вершина</button>
+    <label class="f-label">Кто ходил</label>
+    <div id="hf-crew" class="chips">${activeFirst.map(h =>
+      `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="false">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
+    <button id="hf-save" class="btn btn-primary">Записать хайк</button>
+    <datalist id="peak-list">${Object.keys(PEAKS).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+  `);
+
+  const peaksBox = document.getElementById('hf-peaks');
+  document.getElementById('hf-add-peak').addEventListener('click', () => {
+    peaksBox.insertAdjacentHTML('beforeend', peakRowHTML());
+  });
+  peaksBox.addEventListener('click', (e) => {
+    const x = e.target.closest('.row-x');
+    if (x && peaksBox.children.length > 1) x.closest('.peak-row').remove();
+  });
+  peaksBox.addEventListener('input', (e) => {
+    // подставляем известную высоту автоматически
+    if (!e.target.classList.contains('pk-name')) return;
+    const alt = PEAKS[e.target.value.trim()];
+    const altInput = e.target.closest('.peak-row').querySelector('.pk-alt');
+    if (alt != null && !altInput.value) altInput.value = alt;
+  });
+  document.getElementById('hf-crew').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-m]');
+    if (!chip) return;
+    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
+  });
+
+  document.getElementById('hf-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const name = document.getElementById('hf-name').value.trim();
+    const peaks = [...peaksBox.querySelectorAll('.peak-row')].map(r => ({
+      name: r.querySelector('.pk-name').value.trim(),
+      alt: Number(r.querySelector('.pk-alt').value) || null,
+    })).filter(p => p.name);
+    const member_ids = [...document.querySelectorAll('#hf-crew [aria-pressed="true"]')].map(b => b.dataset.m);
+    if (!name) { toast('Дай маршруту имя'); return; }
+    if (!member_ids.length) { toast('Отметь, кто ходил'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Записываю…';
+    try {
+      await api('record_hike', { name, peaks, member_ids });
+      await refreshFromDB();
+      closeSheet();
+      toast(`«${name}» записан — рейтинг обновился у ${member_ids.length} чел.`);
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Записать хайк';
+    }
+  });
+}
+
+fab.addEventListener('click', openHikeForm);
+
+// ── Тост и хаптика ─────────────────────────────────────────
+
+let toastTimer;
+function toast(msg, ms = 2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.hidden = false;
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => { t.hidden = true; }, 250);
+  }, ms);
+}
+
+const haptic = (type) => tg?.HapticFeedback?.notificationOccurred?.(type);
 
 // ── Управление ─────────────────────────────────────────────
 
@@ -257,8 +539,8 @@ function buildRolesPanel() {
   const roles = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ru'));
   rolesPanel.innerHTML =
     roles.map(([r, n]) =>
-      `<button class="role-chip" data-role="${r}" aria-pressed="false">${r} <b>${n}</b></button>`).join('') +
-    `<button class="role-chip role-reset" id="roles-reset" hidden>Сбросить</button>`;
+      `<button class="role-chip" data-role="${esc(r)}" aria-pressed="${state.roles.has(r)}">${r} <b>${n}</b></button>`).join('') +
+    `<button class="role-chip role-reset" id="roles-reset" ${state.roles.size ? '' : 'hidden'}>Сбросить</button>`;
 }
 
 function syncRolesUI() {
@@ -293,16 +575,31 @@ rolesPanel.addEventListener('click', (e) => {
   render();
 });
 
-buildRolesPanel();
-renderStats();
-render();
-
 // ── Telegram Mini App ──────────────────────────────────────
-// вне Телеграма (обычный браузер) блок просто не срабатывает
-if (window.Telegram?.WebApp?.initData !== undefined) {
-  const tg = window.Telegram.WebApp;
+
+async function initTelegram() {
+  if (!tg || tg.initData === undefined) return;
   tg.ready();
   tg.expand();
   tg.setHeaderColor('#0a0d13');
   tg.setBackgroundColor('#0a0d13');
+  if (!tg.initData) return; // открыто в обычном браузере — только просмотр
+  try {
+    session = await api('me');
+    if (session.isAdmin) {
+      fab.hidden = false;
+    } else if (!session.memberId) {
+      toast('Найди свою карточку и нажми «Это моя карточка»', 5000);
+    }
+  } catch (e) {
+    console.warn('auth', e);
+  }
 }
+
+// ── Старт: мгновенный рендер из запаса, потом живая база ───
+
+buildRolesPanel();
+renderStats();
+render();
+initTelegram();
+refreshFromDB();

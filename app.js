@@ -983,6 +983,19 @@ searchEl.addEventListener('input', () => {
   }, 120);
 });
 
+searchEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') searchEl.blur(); // Enter прячет клавиатуру
+});
+
+// экранная клавиатура должна закрываться при тапе мимо поля ввода
+document.addEventListener('touchstart', (e) => {
+  const a = document.activeElement;
+  if (!a) return;
+  const isField = a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT';
+  const tappedField = e.target.closest?.('input, textarea, select');
+  if (isField && !tappedField) a.blur();
+}, { passive: true });
+
 // ── Фильтр по ролям ────────────────────────────────────────
 
 const roleDict = () => ROLES.length ? ROLES : [...new Set(HEROES.flatMap(h => h.roles))];

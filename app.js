@@ -18,7 +18,13 @@ const state = { tab: 'all', q: '', roles: new Set() };
 let firstRender = true;
 let lastFocused = null;
 
-const hikesOf = (h) => h.peaks.reduce((s, p) => s + p.t, 0);
+const hikesFor = (h) => HIKES.filter(k => k.crew.includes(h.id));
+const hikesOf = (h) => hikesFor(h).length;
+const peaksOf = (h) => {
+  const m = new Map();
+  for (const k of hikesFor(h)) for (const p of k.peaks) m.set(p, (m.get(p) || 0) + 1);
+  return [...m.entries()].map(([n, t]) => ({ n, t })).sort((a, b) => b.t - a.t);
+};
 const fullName = (h) => h.nick ? `${h.name} <i>«${h.nick}»</i>` : h.name;
 const initialsOf = (h) => h.nick ? (h.name[0] || '') + (h.nick[0] || '') : h.name.slice(0, 2);
 
@@ -38,8 +44,8 @@ function artHTML(h, big = false) {
 function renderStats() {
   const total = HEROES.length;
   const active = HEROES.filter(h => h.status === 'active').length;
-  const hikes = HEROES.reduce((s, h) => s + hikesOf(h), 0);
-  const peaks = new Set(HEROES.flatMap(h => h.peaks.map(p => p.n))).size;
+  const hikes = HIKES.length;
+  const peaks = new Set(HIKES.flatMap(k => k.peaks)).size;
   const stat = (n, label) => `
     <div class="stat">
       <span class="stat-num">${n}</span>
@@ -82,7 +88,8 @@ function render() {
   let idx = 0;
   let html = '';
   for (const key of RANK_ORDER) {
-    const heroes = HEROES.filter(h => h.rank === key).filter(statusMatch).filter(rolesMatch).filter(match);
+    const heroes = HEROES.filter(h => h.rank === key).filter(statusMatch).filter(rolesMatch).filter(match)
+      .sort((a, b) => hikesOf(b) - hikesOf(a));
     if (!heroes.length) continue;
     html += `
       <section class="roster-section ${key === 'deity' ? 'section-deity' : ''}" style="--sc:${RANKS[key].c}">
@@ -115,9 +122,14 @@ function openModal(id, sourceEl) {
     ? `<span class="dot dot-active"></span> В строю · ${h.place}`
     : `<span class="dot dot-gone"></span> Легенда прошлого · сейчас — ${h.place}`;
 
-  const peaksBlock = h.peaks.length
-    ? `<div class="chips">${h.peaks.map(p => `<span class="chip">${p.n} <b>×${p.t}</b></span>`).join('')}</div>`
-    : `<p class="peaks-empty">Пока не отмечены — скоро тут будет вся история хайков.</p>`;
+  const myPeaks = peaksOf(h);
+  const myHikes = hikesFor(h);
+  const peaksBlock = myPeaks.length
+    ? `<div class="chips">${myPeaks.map(p => `<span class="chip">${p.n} <b>×${p.t}</b></span>`).join('')}</div>`
+    : `<p class="peaks-empty">Пока ни одной — всё впереди.</p>`;
+  const hikesBlock = myHikes.length
+    ? `<div class="chips">${myHikes.map(k => `<span class="chip">${k.name}</span>`).join('')}</div>`
+    : `<p class="peaks-empty">Пока ни одного — всё впереди.</p>`;
 
   modalCard.className = `modal-card rank-${h.rank}`;
   modalCard.style.setProperty('--rc', rank.c);
@@ -130,7 +142,7 @@ function openModal(id, sourceEl) {
 
     <div class="stat-tiles">
       <div class="tile"><span class="tile-num">${hikesOf(h)}</span><span class="tile-label">хайков</span></div>
-      <div class="tile"><span class="tile-num">${h.peaks.length}</span><span class="tile-label">вершин</span></div>
+      <div class="tile"><span class="tile-num">${myPeaks.length}</span><span class="tile-label">вершин</span></div>
     </div>
 
     ${h.roles.length ? `
@@ -139,6 +151,9 @@ function openModal(id, sourceEl) {
 
     <p class="modal-sub">Покорённые вершины</p>
     ${peaksBlock}
+
+    <p class="modal-sub">Хайки</p>
+    ${hikesBlock}
 
     <p class="modal-status">${status}</p>`;
 

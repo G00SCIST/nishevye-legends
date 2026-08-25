@@ -120,6 +120,13 @@ const hikesAggOf = (h) => {
 };
 
 const fullName = (h) => h.nick ? `${h.name} <i>«${h.nick}»</i>` : h.name;
+
+// подпись хайка: повторные заходы по тому же маршруту нумеруются
+const hikeLabel = (k) => {
+  const same = HIKES.filter(x => x.name === k.name);
+  if (same.length < 2) return k.name;
+  return `${k.name} · ${same.findIndex(x => x.id === k.id) + 1}-й заход`;
+};
 const initialsOf = (h) => h.nick ? (h.name[0] || '') + (h.nick[0] || '') : h.name.slice(0, 2);
 
 const ART_SVG = `
@@ -380,7 +387,8 @@ function openEditor(h) {
   }
   if (admin) {
     inner += f('Хайки — ходил / не ходил', `<div id="ef-hikes" class="chips">${HIKES.map(k =>
-      `<button type="button" class="role-chip" data-k="${k.id}" aria-pressed="${k.crew.includes(h.id)}">${esc(k.name)}</button>`).join('')}</div>`);
+      `<button type="button" class="role-chip" data-k="${k.id}" aria-pressed="${k.crew.includes(h.id)}">${esc(hikeLabel(k))}</button>`).join('')}</div>
+      <p class="f-hint">Ходил дважды по одному маршруту — отметь оба захода.</p>`);
   }
   inner += f('Фото', `
     <div class="photo-row">
@@ -573,7 +581,7 @@ function openSettings() {
     <label class="f-label">Хайки — тапни, чтобы править</label>
     <div id="rs-hikes" class="hike-list">${HIKES.map(k => `
       <button type="button" class="hike-row-btn" data-k="${k.id}">
-        <span>${esc(k.name)}</span><b>${k.crew.length} чел.</b>
+        <span>${esc(hikeLabel(k))}</span><b>${k.crew.length} чел.</b>
       </button>`).join('')}</div>`);
 
   const list = document.getElementById('rs-list');
@@ -819,36 +827,47 @@ rolesPanel.addEventListener('click', (e) => {
 
 async function initTelegram() {
   if (!tg || tg.initData === undefined) return;
-  tg.ready();
-  tg.expand();
-  tg.setHeaderColor('#0a0d13');
-  tg.setBackgroundColor('#0a0d13');
-  tg.disableVerticalSwipes?.(); // свайп вниз не должен закрывать апку при скролле
-
-  // кнопка «на весь экран», если телега это умеет
-  const fsBtn = document.getElementById('fs-btn');
-  if (typeof tg.requestFullscreen === 'function') {
-    fsBtn.hidden = false;
-    fsBtn.addEventListener('click', () => {
-      try { tg.isFullscreen ? tg.exitFullscreen() : tg.requestFullscreen(); } catch { /* старая телега */ }
-    });
-    tg.onEvent?.('fullscreenChanged', () => {
-      document.body.classList.toggle('tg-fullscreen', !!tg.isFullscreen);
-    });
-  }
-
-  if (!tg.initData) return; // открыто в обычном браузере — только просмотр
   try {
-    session = await api('me');
+    tg.ready();
+    tg.expand();
+    tg.setHeaderColor('#0a0d13');
+    tg.setBackgroundColor('#0a0d13');
+  } catch { /* косметика не должна ронять апку */ }
+
+  // сначала главное — узнать, кто это (с одним повтором на плохую сеть)
+  if (tg.initData) {
+    let ok = false;
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      try {
+        session = await api('me');
+        ok = true;
+      } catch (e) {
+        console.warn('auth', e);
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
     if (session.isAdmin) {
       fab.hidden = false;
       fabSet.hidden = false;
-    } else if (!session.memberId) {
+    } else if (ok && !session.memberId) {
       toast('Найди свою карточку и нажми «Это моя карточка»', 5000);
     }
-  } catch (e) {
-    console.warn('auth', e);
   }
+
+  // всё необязательное — строго после и в броне
+  try { tg.disableVerticalSwipes?.(); } catch { /* старый клиент */ }
+  try {
+    const fsBtn = document.getElementById('fs-btn');
+    if (fsBtn && typeof tg.requestFullscreen === 'function') {
+      fsBtn.hidden = false;
+      fsBtn.addEventListener('click', () => {
+        try { tg.isFullscreen ? tg.exitFullscreen() : tg.requestFullscreen(); } catch { /* не умеет */ }
+      });
+      tg.onEvent?.('fullscreenChanged', () => {
+        document.body.classList.toggle('tg-fullscreen', !!tg.isFullscreen);
+      });
+    }
+  } catch { /* старый клиент */ }
 }
 
 // ── Старт: мгновенный рендер из запаса, потом живая база ───

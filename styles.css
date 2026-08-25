@@ -383,6 +383,36 @@ main { max-width: 1160px; margin: 0 auto; padding: 6px 16px 0; }
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 50% 28%; /* лица обычно в верхней трети */
+}
+
+/* фото на карточке: плавный зум при наведении */
+.card .art-photo {
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.card:hover .art-photo, .card:focus-visible .art-photo {
+  transform: scale(1.09);
+}
+
+/* киношная виньетка поверх фото, чтобы карточка не была «сырой» */
+.art:has(> .art-photo)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(6, 8, 12, 0.22) 0%, transparent 28%, transparent 55%, rgba(6, 8, 12, 0.6) 100%);
+  pointer-events: none;
+}
+
+/* в профиле фото медленно «дышит» (кен-бёрнс) */
+@keyframes kenburns {
+  from { transform: scale(1) translateY(0); }
+  to { transform: scale(1.08) translateY(-2%); }
+}
+
+.art-big .art-photo {
+  animation: kenburns 14s ease-in-out infinite alternate;
 }
 
 .art-peaks {
@@ -867,6 +897,7 @@ footer {
   }
 
   .art-big { min-height: 175px; height: 175px; }
+  .art-big:has(> .art-photo) { min-height: 250px; height: 250px; } /* фото на телефоне — больше кадра */
   .art-big .art-initials { font-size: 44px; top: 42%; }
   .modal-body { padding: 18px 18px 26px; }
 }
@@ -1029,6 +1060,45 @@ footer {
 .photo-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .photo-row .btn { margin-top: 0; }
 .photo-row .f-hint { margin: 0; }
+
+/* кадрирование фото */
+.crop-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(240, 180, 60, 0.45);
+  background: #000;
+  touch-action: none;
+  cursor: grab;
+}
+
+.crop-box:active { cursor: grabbing; }
+
+.crop-box img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.crop-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.crop-zoom-row input[type='range'] { flex: 1; accent-color: var(--gold); }
+
+.crop-actions { display: flex; gap: 8px; margin-top: 8px; }
+.crop-actions .btn { margin-top: 0; flex: 1; }
 
 .fs-btn {
   position: fixed;
@@ -1218,4 +1288,5 @@ select.f-input { appearance: none; }
   .leaves i { animation: none !important; }
   .stripe { animation: none; }
   .stripe::after { display: none; }
+  .art-big .art-photo { animation: none; }
 }

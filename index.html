@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LEGENDS — Зал героев</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 10 L94 90 L6 90 Z' fill='%23f0b43c'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+  <canvas id="bg" class="bg-canvas" aria-hidden="true"></canvas>
+
+  <header class="hero">
+    <p class="overline">Legends of Nishevye · Japan</p>
+    <h1 class="logo">LEGENDS</h1>
+    <p class="tagline">Зал нишевых хайк-команды — те, кто в строю, и те, кто стал легендой.</p>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <div class="controls">
+    <div id="tabs" class="tabs" role="group" aria-label="Фильтр состава">
+      <button class="tab" data-tab="all" aria-pressed="true">Все</button>
+      <button class="tab" data-tab="active" aria-pressed="false">В Японии</button>
+      <button class="tab" data-tab="gone" aria-pressed="false">Легенды прошлого</button>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+      </svg>
+      <input id="search" type="search" placeholder="Найти нишевого…" aria-label="Поиск нишевого" autocomplete="off">
+    </div>
+    <button id="roles-toggle" class="roles-toggle" aria-expanded="false" aria-controls="roles-panel">
+      Роли
+      <span id="roles-count" class="roles-count" hidden></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m6 9 6 6 6-6"/>
+      </svg>
+    </button>
+    <div id="roles-panel" class="roles-panel" hidden></div>
+  </div>
+
+  <main id="sections"></main>
+
+  <div id="empty" class="empty" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+      <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+    </svg>
+    <p>Никого не нашли. Попробуй другое имя.</p>
+  </div>
+
+  <footer>LEGENDS · прототип v0.2 · Legends of Nishevye</footer>
+
+  <div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-name">
+    <div class="modal-card">
+      <button class="modal-close" aria-label="Закрыть профиль">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+      <div class="modal-art-slot"></div>
+      <div class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="bg.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

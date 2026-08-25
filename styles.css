@@ -968,6 +968,8 @@ footer {
 
 .btn-sm { min-height: 38px; padding: 0 13px; font-size: 13px; margin-top: 8px; }
 
+.btn-block { width: 100%; margin-top: 8px; }
+
 .modal-actions {
   display: flex;
   flex-wrap: wrap;

@@ -122,6 +122,24 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    case 'create_self': {
+      // новичок сам создаёт свою карточку: Новобранец, сразу привязан к его Телеграму
+      if (myMember) return json({ error: 'you already have a card' }, 409);
+      const name = String(p.name ?? '').trim();
+      const nick = String(p.nick ?? '').trim() || null;
+      if (!name) return json({ error: 'name required' }, 400);
+      const id = 'tg' + user.id;
+      const hues = [25, 45, 90, 140, 175, 200, 225, 260, 290, 320];
+      const { error } = await supa.from('members').insert({
+        id, name, nick,
+        status: 'active', rank: 'recruit', roles: [],
+        place: 'Токио', hue: hues[user.id % hues.length],
+        telegram_id: user.id, tg_username: user.username ?? null,
+      });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, id });
+    }
+
     case 'add_member': {
       if (!isAdmin) return json({ error: 'admin only' }, 403);
       const fields = pick(p.fields as Record<string, unknown>, ADMIN_FIELDS);

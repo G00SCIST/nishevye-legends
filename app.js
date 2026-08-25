@@ -886,6 +886,66 @@ function readHikeForm() {
 
 fabSet.addEventListener('click', openSettings);
 
+// ── Встреча новичка ────────────────────────────────────────
+
+function openWelcome() {
+  openSheet(`
+    <h3 class="sheet-title">Добро пожаловать в зал нишевых</h3>
+    <p class="f-hint">Кто ты?</p>
+    <button type="button" id="w-find" class="btn btn-primary">Я в команде — найду свою карточку</button>
+    <button type="button" id="w-create" class="btn btn-ghost btn-block">Меня ещё нет — создать карточку</button>
+    <button type="button" id="w-view" class="btn btn-ghost btn-block">Я зритель — просто посмотреть</button>`);
+
+  document.getElementById('w-find').addEventListener('click', () => {
+    closeSheet();
+    toast('Найди себя и жми «Это моя карточка»', 4500);
+    searchEl.focus();
+  });
+
+  document.getElementById('w-view').addEventListener('click', () => {
+    localStorage.setItem('legends_viewer', '1');
+    closeSheet();
+    toast('Смотри на здоровье. Захочешь карточку — она ждёт.');
+  });
+
+  document.getElementById('w-create').addEventListener('click', openCreateSelf);
+}
+
+function openCreateSelf() {
+  openSheet(`
+    <h3 class="sheet-title">Твоя карточка</h3>
+    <label class="f-label">Имя</label>
+    <input id="cs-name" class="f-input" placeholder="Как тебя зовут">
+    <label class="f-label">Прозвище (по желанию)</label>
+    <input id="cs-nick" class="f-input" placeholder="Как тебя зовут в горах">
+    <button type="button" id="cs-save" class="btn btn-primary">Создать карточку</button>
+    <p class="f-hint">Начнёшь Новобранцем. Фото, инсту и фразу добавишь через «Редактировать».</p>`);
+
+  document.getElementById('cs-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const name = document.getElementById('cs-name').value.trim();
+    const nick = document.getElementById('cs-nick').value.trim();
+    if (!name) { toast('Напиши имя'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Создаю…';
+    try {
+      const res = await api('create_self', { name, nick });
+      session.memberId = res.id;
+      await refreshFromDB();
+      closeSheet();
+      toast('Карточка создана — открой её и жми «Редактировать»');
+      haptic('success');
+      const el = grid.querySelector(`.card[data-id="${res.id}"]`);
+      if (el) openModal(res.id, el);
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Создать карточку';
+    }
+  });
+}
+
 // ── Тост и хаптика ─────────────────────────────────────────
 
 let toastTimer;
@@ -996,8 +1056,8 @@ async function initTelegram() {
     if (session.isAdmin) {
       fab.hidden = false;
       fabSet.hidden = false;
-    } else if (ok && !session.memberId) {
-      toast('Найди свою карточку и нажми «Это моя карточка»', 5000);
+    } else if (ok && !session.memberId && localStorage.getItem('legends_viewer') !== '1') {
+      openWelcome();
     }
   }
 

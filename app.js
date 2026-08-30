@@ -485,6 +485,29 @@ function closeSheet() {
 sheetClose.addEventListener('click', closeSheet);
 sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
 
+// ── Клавиатура на телефоне не должна прятать поле ──────────
+// высоту клавиатуры кладём в --kb: снизу появляется запас, куда можно проскроллить
+const scrollFieldIntoView = (el) => {
+  if (!el?.scrollIntoView) return;
+  setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
+};
+
+sheet.addEventListener('focusin', (e) => {
+  if (e.target.matches?.('input, textarea, select')) scrollFieldIntoView(e.target);
+});
+
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const sync = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+    const a = document.activeElement;
+    if (kb > 0 && a?.matches?.('input, textarea')) scrollFieldIntoView(a);
+  };
+  vv.addEventListener('resize', sync);
+  vv.addEventListener('scroll', sync);
+}
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!sheet.hidden) return closeSheet();
@@ -812,6 +835,9 @@ function hikeFormHTML(title, okLabel, extra = '') {
     <input id="hf-name" class="f-input hf-name-input" placeholder="Например: Дзимба → Такао">
     <p id="hf-repeat" class="f-hint" hidden></p>
 
+    <label class="f-label">Ссылка на презентацию (по желанию)</label>
+    <input id="hf-deck" class="f-input" placeholder="https://..." inputmode="url" autocomplete="off">
+
     <label class="f-label">Вершины</label>
     <div id="hf-peaks" class="chips"></div>
     <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ Добавить гору</button>
@@ -820,9 +846,6 @@ function hikeFormHTML(title, okLabel, extra = '') {
     <label class="f-label">Кто ходил</label>
     <div id="hf-crew" class="chips">${activeFirst.map(h =>
       `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="false">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
-
-    <label class="f-label">Ссылка на презентацию маршрута (по желанию)</label>
-    <input id="hf-deck" class="f-input" placeholder="https://..." inputmode="url">
 
     <button id="hf-save" class="btn btn-primary">${okLabel}</button>
     ${extra}`;

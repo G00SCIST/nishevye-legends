@@ -1398,7 +1398,8 @@ body.tg-fullscreen .controls {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, #141a26 0%, #0e131d 100%);
   box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
-  padding: 24px 22px;
+  /* нижний запас = высота клавиатуры, чтобы последнее поле можно было поднять над ней */
+  padding: 24px 22px calc(24px + var(--kb, 0px));
   transform: translateY(14px);
   transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.05);
 }
@@ -1507,12 +1508,14 @@ select.f-input { appearance: none; }
 .toast[hidden] { display: none; }
 
 @media (max-width: 640px) {
-  #sheet { padding: 0; align-items: flex-end; }
+  /* шторка садится над клавиатурой, а не под ней */
+  #sheet { padding: 0 0 var(--kb, 0px); align-items: flex-end; }
   .sheet-card {
     width: 100%;
-    max-height: 92dvh;
+    max-height: calc(92dvh - var(--kb, 0px));
     border-radius: 20px 20px 0 0;
     border-bottom: none;
+    padding-bottom: 24px;
   }
 }
 

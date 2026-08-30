@@ -92,7 +92,9 @@ const hikesOf = (h) => hikesFor(h).length;
 
 // высота → уровень вершины и очки рейтинга
 const altOf = (p) => PEAKS[p] ?? 0;
-const tierOf = (p) => altOf(p) >= 2500 ? 'epic' : altOf(p) >= 2000 ? 'solid' : 'base';
+const tierByAlt = (alt) => (alt || 0) >= 2500 ? 'epic' : (alt || 0) >= 2000 ? 'solid' : 'base';
+const tierOf = (p) => tierByAlt(altOf(p));
+const TIER_LABEL = { epic: 'эпик', solid: 'крепкая', base: 'обычная' };
 const PTS = { epic: 100, solid: 50, base: 20 };
 
 const ratingOf = (h) => hikesFor(h).reduce((s, k) =>
@@ -126,7 +128,7 @@ const fullName = (h) => h.nick ? `${h.name} <i>«${h.nick}»</i>` : h.name;
 const hikeLabel = (k) => {
   const same = HIKES.filter(x => x.name === k.name);
   if (same.length < 2) return k.name;
-  return `${k.name} · ${same.findIndex(x => x.id === k.id) + 1}-й заход`;
+  return `${k.name} · заход ${same.findIndex(x => x.id === k.id) + 1}`;
 };
 const initialsOf = (h) => h.nick ? (h.name[0] || '') + (h.nick[0] || '') : h.name.slice(0, 2);
 
@@ -280,7 +282,8 @@ function openModal(id, sourceEl) {
       <div class="tile"><span class="tile-num">${myPeaks.length}</span><span class="tile-label">вершин</span></div>
       <div class="tile"><span class="tile-num">${ratingOf(h)}</span><span class="tile-label">рейтинг</span></div>
     </div>
-    <div class="rating-bar" role="img" aria-label="Рейтинг относительно лидера команды"><i></i></div>
+    <p class="rank-place" id="rank-place"></p>
+    <div class="rating-bar" role="img" aria-label="Прогресс до следующего места"><i></i></div>
 
     ${h.roles.length ? `
       <p class="modal-sub">Роли в пати</p>
@@ -328,9 +331,23 @@ function openModal(id, sourceEl) {
   requestAnimationFrame(() => modal.classList.add('open'));
   modalClose.focus();
 
-  // шкала: доля рейтинга героя от лидера команды, дорастает с анимацией
-  const maxRating = Math.max(...HEROES.map(ratingOf), 1);
-  const pct = Math.max(3, Math.round(ratingOf(h) / maxRating * 100));
+  // шкала: место в общем зачёте и сколько очков до того, кто выше
+  const board = [...HEROES].sort((a, b) => ratingOf(b) - ratingOf(a));
+  const my = ratingOf(h);
+  const place = board.findIndex(x => x.id === h.id) + 1;
+  const above = board.slice(0, place - 1).reverse().find(x => ratingOf(x) > my);
+  const placeEl = modalCard.querySelector('#rank-place');
+  let pct;
+  if (!above) {
+    placeEl.innerHTML = `<b>#1 в команде</b> · выше только горы`;
+    pct = 100;
+  } else {
+    const gap = ratingOf(above) - my;
+    const below = board.slice(place).find(x => ratingOf(x) < my);
+    const floor = below ? ratingOf(below) : 0;
+    pct = Math.max(4, Math.round((my - floor) / Math.max(ratingOf(above) - floor, 1) * 100));
+    placeEl.innerHTML = `<b>#${place} из ${board.length}</b> · до ${above.name}${above.nick ? ` «${above.nick}»` : ''} — ${gap} очк.`;
+  }
   const bar = modalCard.querySelector('.rating-bar i');
   requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transform = `scaleX(${pct / 100})`; }));
 }
@@ -425,9 +442,14 @@ function openEditor(h) {
     inner += f('Прозвище', text('ef-nick', h.nick));
   }
   if (admin) {
-    inner += f('Хайки — ходил / не ходил', `<div id="ef-hikes" class="chips">${HIKES.map(k =>
-      `<button type="button" class="role-chip" data-k="${k.id}" aria-pressed="${k.crew.includes(h.id)}">${esc(hikeLabel(k))}</button>`).join('')}</div>
-      <p class="f-hint">Ходил дважды по одному маршруту — отметь оба захода.</p>`);
+    const routeNames = [...new Set(HIKES.map(k => k.name))];
+    inner += f('Хайки — сколько раз ходил', `<div id="ef-hikes" class="chips">${routeNames.map(name => {
+      const runs = HIKES.filter(k => k.name === name);
+      const mine = runs.filter(k => k.crew.includes(h.id)).length;
+      return `<button type="button" class="role-chip" data-route="${esc(name)}" data-n="${mine}" data-max="${runs.length}"
+                aria-pressed="${mine > 0}">${esc(name)}${mine > 1 ? ` <b>×${mine}</b>` : ''}</button>`;
+    }).join('')}</div>
+      <p class="f-hint">Тапай, чтобы добавить заход. Где маршрут был несколько раз — тапни ещё раз, станет ×2.</p>`);
   }
   inner += f('Фото', `
     <div class="photo-row">
@@ -449,9 +471,13 @@ function openEditor(h) {
   openSheet(inner);
 
   document.getElementById('ef-hikes')?.addEventListener('click', (e) => {
-    const chip = e.target.closest('[data-k]');
+    const chip = e.target.closest('[data-route]');
     if (!chip) return;
-    chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'));
+    const max = Number(chip.dataset.max);
+    const n = (Number(chip.dataset.n) + 1) % (max + 1);
+    chip.dataset.n = n;
+    chip.setAttribute('aria-pressed', String(n > 0));
+    chip.innerHTML = `${chip.dataset.route}${n > 1 ? ` <b>×${n}</b>` : ''}`;
   });
 
   document.getElementById('ef-hue').addEventListener('click', (e) => {
@@ -518,7 +544,17 @@ function openEditor(h) {
     try {
       await api('update_member', { id: h.id, fields });
       if (admin) {
-        const hikeIds = [...document.querySelectorAll('#ef-hikes [aria-pressed="true"]')].map(b => Number(b.dataset.k));
+        // из «сколько раз ходил» собираем конкретные заходы, не трогая уже отмеченные
+        const hikeIds = [];
+        for (const chip of document.querySelectorAll('#ef-hikes [data-route]')) {
+          const want = Number(chip.dataset.n);
+          const runs = HIKES.filter(k => k.name === chip.dataset.route);
+          const already = runs.filter(k => k.crew.includes(h.id));
+          const rest = runs.filter(k => !k.crew.includes(h.id));
+          const picked = already.slice(0, want).map(k => k.id);
+          while (picked.length < want && rest.length) picked.push(rest.shift().id);
+          hikeIds.push(...picked);
+        }
         const before = HIKES.filter(k => k.crew.includes(h.id)).map(k => k.id).sort().join(',');
         if (hikeIds.slice().sort().join(',') !== before) {
           await api('set_member_hikes', { member_id: h.id, hike_ids: hikeIds });
@@ -655,34 +691,55 @@ function cropStep(file, rw, rh, outW, outH, title, okLabel) {
 
 // ── Запись хайка (только Создатель) ────────────────────────
 
-function peakRowHTML(name = '', alt = '') {
-  return `
-    <div class="peak-row">
-      <input class="f-input pk-name" list="peak-list" placeholder="Гора" value="${esc(name)}">
-      <input class="f-input pk-alt" type="number" placeholder="Высота, м" value="${alt ?? ''}">
-      <button type="button" class="row-x" aria-label="Убрать вершину">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>`;
+// уникальные маршруты с числом заходов, самые свежие сверху
+function routeList() {
+  const m = new Map();
+  for (const k of HIKES) m.set(k.name, (m.get(k.name) || 0) + 1);
+  return [...m.entries()].reverse();
 }
 
-function openHikeForm() {
+let formPeaks = []; // вершины текущей формы: [{name, alt}]
+
+function renderFormPeaks() {
+  const box = document.getElementById('hf-peaks');
+  box.innerHTML = formPeaks.length
+    ? formPeaks.map((p, i) => `
+        <span class="chip chip-${tierByAlt(p.alt)} peak-chip">
+          ${esc(p.name)} <b>${p.alt ? p.alt + ' м · ' + TIER_LABEL[tierByAlt(p.alt)] : 'высота ?'}</b>
+          <button type="button" class="chip-x" data-i="${i}" aria-label="Убрать ${esc(p.name)}">×</button>
+        </span>`).join('')
+    : '<p class="f-hint">Пока ни одной. Хайк можно записать и без вершины.</p>';
+}
+
+function hikeFormHTML(title, okLabel, extra = '') {
   const activeFirst = [...HEROES].sort((a, b) =>
     (a.status === 'gone') - (b.status === 'gone') || a.name.localeCompare(b.name, 'ru'));
-  openSheet(`
-    <h3 class="sheet-title">Записать хайк</h3>
-    <label class="f-label">Маршрут</label>
-    <input id="hf-name" class="f-input" placeholder="Например: Дзимба → Такао">
-    <label class="f-label">Вершины (можно несколько, можно ни одной)</label>
-    <div id="hf-peaks">${peakRowHTML()}</div>
-    <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ ещё вершина</button>
+  return `
+    <h3 class="sheet-title">${title}</h3>
+
+    <label class="f-label">Маршрут — тапни готовый или впиши новый</label>
+    <div id="hf-routes" class="chips">${routeList().map(([name, n]) =>
+      `<button type="button" class="role-chip" data-route="${esc(name)}">${esc(name)}${n > 1 ? ` <b>×${n}</b>` : ''}</button>`).join('')}</div>
+    <input id="hf-name" class="f-input hf-name-input" placeholder="Например: Дзимба → Такао">
+    <p id="hf-repeat" class="f-hint" hidden></p>
+
+    <label class="f-label">Вершины</label>
+    <div id="hf-peaks" class="chips"></div>
+    <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ Добавить гору</button>
+    <div id="hf-picker" class="picker" hidden></div>
+
     <label class="f-label">Кто ходил</label>
     <div id="hf-crew" class="chips">${activeFirst.map(h =>
       `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="false">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
-    <button id="hf-save" class="btn btn-primary">Записать хайк</button>
-    <datalist id="peak-list">${Object.keys(PEAKS).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
-  `);
 
+    <button id="hf-save" class="btn btn-primary">${okLabel}</button>
+    ${extra}`;
+}
+
+function openHikeForm() {
+  formPeaks = [];
+  openSheet(hikeFormHTML('Записать хайк', 'Записать хайк'));
+  renderFormPeaks();
   wireHikeForm();
 
   document.getElementById('hf-save').addEventListener('click', async (e) => {
@@ -785,26 +842,15 @@ function openSettings() {
 // ── Правка существующего хайка ─────────────────────────────
 
 function openHikeEdit(hike) {
-  const activeFirst = [...HEROES].sort((a, b) =>
-    (a.status === 'gone') - (b.status === 'gone') || a.name.localeCompare(b.name, 'ru'));
-  openSheet(`
-    <h3 class="sheet-title">Править хайк</h3>
-    <label class="f-label">Маршрут</label>
-    <input id="hf-name" class="f-input" value="${esc(hike.name)}">
-    <label class="f-label">Вершины и высоты</label>
-    <div id="hf-peaks">${hike.peaks.length
-      ? hike.peaks.map(p => peakRowHTML(p, PEAKS[p] ?? '')).join('')
-      : peakRowHTML()}</div>
-    <button id="hf-add-peak" type="button" class="btn btn-ghost btn-sm">+ ещё вершина</button>
-    <label class="f-label">Кто ходил</label>
-    <div id="hf-crew" class="chips">${activeFirst.map(h =>
-      `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="${hike.crew.includes(h.id)}">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
-    <button id="hf-save" class="btn btn-primary">Сохранить хайк</button>
-    <button id="hf-del" type="button" class="btn btn-ghost btn-danger">Удалить хайк</button>
-    <datalist id="peak-list">${Object.keys(PEAKS).map(p => `<option value="${esc(p)}">`).join('')}</datalist>
-  `);
-
-  wireHikeForm();
+  formPeaks = hike.peaks.map(p => ({ name: p, alt: PEAKS[p] ?? null }));
+  openSheet(hikeFormHTML('Править хайк', 'Сохранить хайк',
+    '<button id="hf-del" type="button" class="btn btn-ghost btn-danger">Удалить хайк</button>'));
+  document.getElementById('hf-name').value = hike.name;
+  document.querySelectorAll('#hf-crew [data-m]').forEach(b => {
+    b.setAttribute('aria-pressed', String(hike.crew.includes(b.dataset.m)));
+  });
+  renderFormPeaks();
+  wireHikeForm(hike.id);
 
   document.getElementById('hf-save').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -849,22 +895,90 @@ function openHikeEdit(hike) {
   });
 }
 
-// общая обвязка формы хайка: добавление/удаление вершин, автоподстановка высот, чипы состава
-function wireHikeForm() {
-  const peaksBox = document.getElementById('hf-peaks');
+// общая обвязка формы хайка: маршруты, пикер гор, чипы состава
+function wireHikeForm(currentId = null) {
+  const nameInput = document.getElementById('hf-name');
+  const repeatNote = document.getElementById('hf-repeat');
+
+  const syncRepeat = () => {
+    const n = HIKES.filter(k => k.name === nameInput.value.trim() && k.id !== currentId).length;
+    repeatNote.hidden = n === 0;
+    if (n) repeatNote.textContent = `Такой маршрут уже есть — это будет ${n + 1}-й заход, в профилях сложится как ×${n + 1}.`;
+  };
+  nameInput.addEventListener('input', syncRepeat);
+  syncRepeat();
+
+  // тап по готовому маршруту: подставляем имя и его вершины
+  document.getElementById('hf-routes').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-route]');
+    if (!btn) return;
+    const name = btn.dataset.route;
+    nameInput.value = name;
+    const src = [...HIKES].reverse().find(k => k.name === name);
+    if (src) formPeaks = src.peaks.map(p => ({ name: p, alt: PEAKS[p] ?? null }));
+    renderFormPeaks();
+    syncRepeat();
+    haptic('success');
+  });
+
+  // убрать вершину
+  document.getElementById('hf-peaks').addEventListener('click', (e) => {
+    const x = e.target.closest('.chip-x');
+    if (!x) return;
+    formPeaks.splice(Number(x.dataset.i), 1);
+    renderFormPeaks();
+  });
+
+  // пикер гор
+  const picker = document.getElementById('hf-picker');
   document.getElementById('hf-add-peak').addEventListener('click', () => {
-    peaksBox.insertAdjacentHTML('beforeend', peakRowHTML());
+    if (!picker.hidden) { picker.hidden = true; return; }
+    const known = Object.entries(PEAKS).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+    picker.innerHTML = `
+      <input id="pk-search" class="f-input" placeholder="Поиск горы…" autocomplete="off">
+      <div id="pk-list" class="pk-list">${known.map(([n, alt]) => `
+        <button type="button" class="pk-item" data-n="${esc(n)}" data-a="${alt ?? ''}">
+          <span>${esc(n)}</span>
+          <b class="pk-tier-${tierByAlt(alt)}">${alt ? alt + ' м' : '? м'}</b>
+        </button>`).join('')}</div>
+      <p class="f-hint">Нет в списке? Впиши новую:</p>
+      <div class="add-row">
+        <input id="pk-new" class="f-input" placeholder="Название горы">
+        <input id="pk-new-alt" class="f-input pk-alt-input" type="number" placeholder="метров">
+      </div>
+      <button id="pk-add-new" type="button" class="btn btn-ghost btn-block">Добавить эту гору</button>`;
+    picker.hidden = false;
+
+    document.getElementById('pk-search').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      picker.querySelectorAll('.pk-item').forEach(it => {
+        it.hidden = !!q && !it.dataset.n.toLowerCase().includes(q);
+      });
+    });
+
+    document.getElementById('pk-list').addEventListener('click', (e) => {
+      const it = e.target.closest('.pk-item');
+      if (!it) return;
+      const name = it.dataset.n;
+      if (!formPeaks.some(p => p.name === name)) {
+        formPeaks.push({ name, alt: Number(it.dataset.a) || null });
+        renderFormPeaks();
+        haptic('success');
+      }
+      picker.hidden = true;
+    });
+
+    document.getElementById('pk-add-new').addEventListener('click', () => {
+      const name = document.getElementById('pk-new').value.trim();
+      const alt = Number(document.getElementById('pk-new-alt').value) || null;
+      if (!name) { toast('Впиши название горы'); return; }
+      if (!formPeaks.some(p => p.name === name)) formPeaks.push({ name, alt });
+      renderFormPeaks();
+      picker.hidden = true;
+      haptic('success');
+    });
   });
-  peaksBox.addEventListener('click', (e) => {
-    const x = e.target.closest('.row-x');
-    if (x && peaksBox.children.length > 1) x.closest('.peak-row').remove();
-  });
-  peaksBox.addEventListener('input', (e) => {
-    if (!e.target.classList.contains('pk-name')) return;
-    const alt = PEAKS[e.target.value.trim()];
-    const altInput = e.target.closest('.peak-row').querySelector('.pk-alt');
-    if (alt != null && !altInput.value) altInput.value = alt;
-  });
+
   document.getElementById('hf-crew').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-m]');
     if (!chip) return;
@@ -874,14 +988,10 @@ function wireHikeForm() {
 
 function readHikeForm() {
   const name = document.getElementById('hf-name').value.trim();
-  const peaks = [...document.querySelectorAll('#hf-peaks .peak-row')].map(r => ({
-    name: r.querySelector('.pk-name').value.trim(),
-    alt: Number(r.querySelector('.pk-alt').value) || null,
-  })).filter(p => p.name);
   const member_ids = [...document.querySelectorAll('#hf-crew [aria-pressed="true"]')].map(b => b.dataset.m);
   if (!name) { toast('Дай маршруту имя'); return null; }
   if (!member_ids.length) { toast('Отметь, кто ходил'); return null; }
-  return { name, peaks, member_ids };
+  return { name, peaks: formPeaks.filter(p => p.name), member_ids };
 }
 
 fabSet.addEventListener('click', openSettings);

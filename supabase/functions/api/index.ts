@@ -62,6 +62,18 @@ const ADMIN_FIELDS = [...SELF_FIELDS, 'name', 'title', 'status', 'rank', 'roles'
 const pick = (obj: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => keys.includes(k)));
 
+// ссылку на презентацию пускаем только http(s) — никаких javascript: и прочего
+function safeUrl(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
@@ -165,7 +177,9 @@ Deno.serve(async (req) => {
       const { data: maxRow } = await supa
         .from('hikes').select('seq').order('seq', { ascending: false }).limit(1).maybeSingle();
       const { data: hike, error: hikeErr } = await supa
-        .from('hikes').insert({ name, seq: (maxRow?.seq ?? 0) + 1 }).select('id').single();
+        .from('hikes')
+        .insert({ name, seq: (maxRow?.seq ?? 0) + 1, deck_url: safeUrl(p.deck_url) })
+        .select('id').single();
       if (hikeErr) return json({ error: hikeErr.message }, 500);
       if (peaks.length) {
         const { error } = await supa.from('hike_peaks')
@@ -210,7 +224,8 @@ Deno.serve(async (req) => {
           .upsert({ name: pk.name.trim(), alt: pk.alt ?? null });
         if (error) return json({ error: error.message }, 500);
       }
-      let r = await supa.from('hikes').update({ name }).eq('id', id);
+      let r = await supa.from('hikes')
+        .update({ name, deck_url: safeUrl(p.deck_url) }).eq('id', id);
       if (r.error) return json({ error: r.error.message }, 500);
       r = await supa.from('hike_peaks').delete().eq('hike_id', id);
       if (r.error) return json({ error: r.error.message }, 500);

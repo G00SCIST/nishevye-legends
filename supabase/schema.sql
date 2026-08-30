@@ -31,6 +31,7 @@ create table if not exists hikes (
   name text not null,
   seq int not null,
   happened_on date,
+  deck_url text, -- ссылка на презентацию маршрута
   created_at timestamptz not null default now()
 );
 

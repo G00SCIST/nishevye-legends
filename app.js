@@ -58,7 +58,7 @@ async function loadData() {
   }));
   PEAKS = Object.fromEntries(peaks.map(p => [p.name, p.alt]));
   HIKES = hikes.map(k => ({
-    id: k.id, name: k.name,
+    id: k.id, name: k.name, deck: k.deck_url,
     peaks: hp.filter(x => x.hike_id === k.id).map(x => x.peak),
     crew: hm.filter(x => x.hike_id === k.id).map(x => x.member_id),
   }));
@@ -189,7 +189,96 @@ function cardHTML(h, i) {
     </button>`;
 }
 
+// мини-карточка участника для веера в маршруте
+function fanCardHTML(h) {
+  const face = h.photo
+    ? `<img src="${h.photo}" alt="" loading="lazy">`
+    : `<span>${initialsOf(h)}</span>`;
+  return `
+    <button class="fan-card ${h.status}" data-id="${h.id}" style="--h:${h.hue}; --rc:${RANKS[h.rank].c}"
+            title="${h.name}${h.nick ? ` «${h.nick}»` : ''}"
+            aria-label="${h.name}${h.nick ? ` «${h.nick}»` : ''} — открыть профиль">${face}</button>`;
+}
+
+function routeCardHTML(k, idx) {
+  const same = HIKES.filter(x => x.name === k.name);
+  const runNo = same.length > 1 ? same.findIndex(x => x.id === k.id) + 1 : 0;
+  const crew = k.crew.map(id => HEROES.find(h => h.id === id)).filter(Boolean)
+    .sort((a, b) => RANK_ORDER.indexOf(a.rank) - RANK_ORDER.indexOf(b.rank));
+  const shown = crew.slice(0, 14);
+  const rest = crew.length - shown.length;
+  const isEpic = k.peaks.some(p => tierOf(p) === 'epic');
+
+  return `
+    <article class="route-card ${isEpic ? 'route-epic' : ''}">
+      <div class="route-head">
+        <h3 class="route-name">${esc(k.name)}${runNo ? ` <span class="route-run">заход ${runNo}</span>` : ''}</h3>
+        <span class="route-num">#${idx}</span>
+      </div>
+
+      ${k.peaks.length
+        ? `<div class="chips route-peaks">${k.peaks.map(p =>
+            `<span class="chip chip-${tierOf(p)}">${esc(p)} <b>${altOf(p) ? altOf(p) + ' м' : '?'}</b></span>`).join('')}</div>`
+        : '<p class="route-nopeak">Без вершины</p>'}
+
+      <div class="route-crew" data-hike="${k.id}">
+        <div class="fan">${shown.map(fanCardHTML).join('')}${rest > 0 ? `<span class="fan-rest">+${rest}</span>` : ''}</div>
+        <p class="route-names">${crew.map(h =>
+          `<button class="name-link" data-id="${h.id}">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</p>
+      </div>
+
+      <div class="route-actions">
+        <span class="route-count">${crew.length} ${crew.length === 1 ? 'нишевый' : 'нишевых'}</span>
+        ${k.deck ? `<button class="btn btn-ghost btn-sm route-deck" data-url="${esc(k.deck)}">📑 Презентация</button>` : ''}
+        ${session.isAdmin ? `<button class="btn btn-ghost btn-sm route-edit" data-k="${k.id}">Править</button>` : ''}
+      </div>
+    </article>`;
+}
+
+function renderRoutes() {
+  const q = state.q.trim().toLowerCase();
+  const list = [...HIKES]
+    .map((k, i) => ({ k, idx: i + 1 }))
+    .filter(({ k }) => !q || (k.name + ' ' + k.peaks.join(' ')).toLowerCase().includes(q))
+    .reverse();
+
+  grid.innerHTML = list.length
+    ? `<section class="roster-section" style="--sc:var(--gold)">
+         <h2 class="section-title">Все маршруты <span class="section-count">${list.length}</span></h2>
+         <div class="routes">${list.map(({ k, idx }) => routeCardHTML(k, idx)).join('')}</div>
+       </section>`
+    : '';
+  emptyEl.hidden = list.length > 0;
+
+  grid.querySelectorAll('.route-crew').forEach(box => {
+    box.addEventListener('click', (e) => {
+      const who = e.target.closest('[data-id]');
+      if (who) {
+        const el = who;
+        openModal(who.dataset.id, el);
+        return;
+      }
+      box.classList.toggle('open'); // тап по вееру раскрывает имена
+    });
+  });
+
+  grid.querySelectorAll('.route-deck').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.url;
+      if (tg?.openLink) tg.openLink(url); else window.open(url, '_blank', 'noopener');
+    });
+  });
+
+  grid.querySelectorAll('.route-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hike = HIKES.find(x => x.id === Number(btn.dataset.k));
+      if (hike) openHikeEdit(hike);
+    });
+  });
+}
+
 function render() {
+  if (state.tab === 'routes') return renderRoutes();
   const q = state.q.trim().toLowerCase();
   const match = h =>
     !q || `${h.name} ${h.nick || ''} ${h.title || ''} ${RANKS[h.rank].label} ${h.place}`.toLowerCase().includes(q);
@@ -732,6 +821,9 @@ function hikeFormHTML(title, okLabel, extra = '') {
     <div id="hf-crew" class="chips">${activeFirst.map(h =>
       `<button type="button" class="role-chip" data-m="${h.id}" aria-pressed="false">${h.name}${h.nick ? ` «${h.nick}»` : ''}</button>`).join('')}</div>
 
+    <label class="f-label">Ссылка на презентацию маршрута (по желанию)</label>
+    <input id="hf-deck" class="f-input" placeholder="https://..." inputmode="url">
+
     <button id="hf-save" class="btn btn-primary">${okLabel}</button>
     ${extra}`;
 }
@@ -846,6 +938,7 @@ function openHikeEdit(hike) {
   openSheet(hikeFormHTML('Править хайк', 'Сохранить хайк',
     '<button id="hf-del" type="button" class="btn btn-ghost btn-danger">Удалить хайк</button>'));
   document.getElementById('hf-name').value = hike.name;
+  document.getElementById('hf-deck').value = hike.deck || '';
   document.querySelectorAll('#hf-crew [data-m]').forEach(b => {
     b.setAttribute('aria-pressed', String(hike.crew.includes(b.dataset.m)));
   });
@@ -989,9 +1082,14 @@ function wireHikeForm(currentId = null) {
 function readHikeForm() {
   const name = document.getElementById('hf-name').value.trim();
   const member_ids = [...document.querySelectorAll('#hf-crew [aria-pressed="true"]')].map(b => b.dataset.m);
+  const deck_url = document.getElementById('hf-deck').value.trim();
   if (!name) { toast('Дай маршруту имя'); return null; }
   if (!member_ids.length) { toast('Отметь, кто ходил'); return null; }
-  return { name, peaks: formPeaks.filter(p => p.name), member_ids };
+  if (deck_url && !/^https?:\/\//i.test(deck_url)) {
+    toast('Ссылка должна начинаться с https://');
+    return null;
+  }
+  return { name, peaks: formPeaks.filter(p => p.name), member_ids, deck_url: deck_url || null };
 }
 
 fabSet.addEventListener('click', openSettings);
@@ -1179,6 +1277,7 @@ async function initTelegram() {
     if (session.isAdmin) {
       fab.hidden = false;
       fabSet.hidden = false;
+      render(); // показать админские кнопки в маршрутах
     } else if (ok && !session.memberId && localStorage.getItem('legends_viewer') !== '1') {
       openWelcome();
     }

@@ -322,6 +322,149 @@ main { max-width: 1160px; margin: 0 auto; padding: 6px 16px 0; }
   gap: 12px;
 }
 
+/* ── Маршруты ───────────────────────────────────────────── */
+.routes { display: flex; flex-direction: column; gap: 12px; }
+
+.route-card {
+  position: relative;
+  padding: 16px 16px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  animation: card-in 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.route-epic {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, #131826, #0e131d) padding-box,
+    linear-gradient(100deg, rgba(255,95,95,.6), rgba(255,230,109,.6), rgba(110,231,160,.6), rgba(95,212,245,.6), rgba(178,139,247,.6)) border-box;
+}
+
+.route-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.route-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.route-run {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 7px;
+  padding: 2px 7px;
+  vertical-align: 2px;
+}
+
+.route-num {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.route-peaks { margin-top: 9px; }
+.route-peaks .chip { font-size: 12px; padding: 4px 10px; }
+.route-nopeak { margin-top: 8px; font-size: 12.5px; color: var(--muted); font-style: italic; }
+
+.route-crew { margin-top: 12px; cursor: pointer; }
+
+/* веер мини-карточек участников */
+.fan { display: flex; flex-wrap: wrap; align-items: center; row-gap: 6px; padding-left: 4px; }
+
+.fan-card {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 45px;
+  margin-left: -10px;
+  border-radius: 7px;
+  border: 1.5px solid #0d1119;
+  outline: 1px solid color-mix(in srgb, var(--rc) 55%, transparent);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, hsl(var(--h) 55% 30%), hsl(var(--h) 50% 14%));
+  transform: rotate(-4deg);
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1), margin 0.22s, box-shadow 0.2s;
+}
+
+.fan-card:nth-child(even) { transform: rotate(4deg); }
+.fan-card img { width: 100%; height: 100%; object-fit: cover; }
+
+.fan-card span {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: hsl(var(--h) 70% 85% / 0.95);
+}
+
+.fan-card.gone img, .fan-card.gone span { filter: grayscale(0.85) brightness(0.85); }
+
+.route-crew:hover .fan-card, .route-crew.open .fan-card {
+  margin-left: -2px;
+  transform: rotate(0deg);
+}
+
+.fan-card:hover {
+  transform: translateY(-4px) rotate(0deg) scale(1.12);
+  box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--rc) 70%, transparent);
+  z-index: 2;
+}
+
+.fan-rest {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.route-names {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 10px;
+}
+
+.route-crew.open .route-names { display: flex; }
+
+.name-link {
+  font-size: 12.5px;
+  color: #b9c2d1;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
+  padding: 1px 0;
+}
+
+.name-link:hover { color: var(--gold-soft); border-bottom-color: var(--gold); }
+
+.route-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.route-count {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.route-actions .btn { margin-top: 0; }
+
 /* ── Карточка героя ─────────────────────────────────────── */
 @keyframes card-in {
   from { opacity: 0; transform: translateY(14px) scale(0.97); }
@@ -923,6 +1066,18 @@ footer {
   .stats { gap: 10px 24px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(102px, 1fr)); gap: 9px; }
 
+  /* табы в одну строку с горизонтальным скроллом — их уже четыре */
+  .tabs {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; padding: 0 12px; font-size: 13px; }
+
+  .fan-card { width: 30px; height: 40px; }
+
   #modal { padding: 0; align-items: flex-end; }
 
   .modal-card {
@@ -1192,18 +1347,14 @@ footer {
 .crop-actions .btn { margin-top: 0; flex: 1; }
 
 .fs-btn {
-  position: fixed;
-  top: calc(10px + var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px));
-  right: 12px;
-  z-index: 55;
-  width: 40px;
-  height: 40px;
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
   display: grid;
   place-items: center;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(13, 17, 25, 0.7);
-  backdrop-filter: blur(8px);
+  background: var(--surface);
   color: var(--muted);
 }
 

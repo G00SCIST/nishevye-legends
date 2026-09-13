@@ -1,5 +1,21 @@
 'use strict';
 
+// ── Самообновление ─────────────────────────────────────────
+// Телеграм держит страницу в кэше, и люди днями сидят на старой версии.
+// Сверяемся с version.txt; если на сервере новее — перезагружаемся на свежий URL.
+// Номер должен совпадать с ?v= в index.html и с version.txt — поднимать все три вместе.
+const APP_VERSION = 31;
+fetch('version.txt?t=' + Date.now(), { cache: 'no-store' })
+  .then(r => (r.ok ? r.text() : ''))
+  .then(v => {
+    const latest = Number(v.trim());
+    if (latest > APP_VERSION && sessionStorage.getItem('legends_reloaded') !== String(latest)) {
+      sessionStorage.setItem('legends_reloaded', String(latest)); // защита от петли перезагрузок
+      location.replace(location.pathname + '?v=' + latest + location.hash);
+    }
+  })
+  .catch(() => { /* офлайн — работаем на том, что есть */ });
+
 // ── Конфиг ─────────────────────────────────────────────────
 const SUPA_URL = 'https://kaqzxmmjcmregofjnkkb.supabase.co';
 const SUPA_KEY = 'sb_publishable_NwAGBGzSk0A-6h9fb-7nuQ_eN0um_n4'; // публичный, можно светить

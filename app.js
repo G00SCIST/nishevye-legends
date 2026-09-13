@@ -4,7 +4,7 @@
 // Телеграм держит страницу в кэше, и люди днями сидят на старой версии.
 // Сверяемся с version.txt; если на сервере новее — перезагружаемся на свежий URL.
 // Номер должен совпадать с ?v= в index.html и с version.txt — поднимать все три вместе.
-const APP_VERSION = 31;
+const APP_VERSION = 32;
 fetch('version.txt?t=' + Date.now(), { cache: 'no-store' })
   .then(r => (r.ok ? r.text() : ''))
   .then(v => {
@@ -164,7 +164,10 @@ const PTS = { epic: 100, solid: 50, base: 20 };
 const ratingOf = (h) => hikesFor(h).reduce((s, k) =>
   s + (k.peaks.length ? k.peaks.reduce((a, p) => a + PTS[tierOf(p)], 0) : PTS.base), 0);
 
-// покорённые вершины — только значимые, от 2000 м
+// сколько разных вершин у героя — все, независимо от высоты (для плитки «вершин»)
+const allPeaksCount = (h) => new Set(hikesFor(h).flatMap(k => k.peaks)).size;
+
+// покорённые вершины — только значимые, от 2000 м (для списка в профиле)
 const peaksOf = (h) => {
   const m = new Map();
   for (const k of hikesFor(h)) for (const p of k.peaks) {
@@ -220,7 +223,7 @@ function renderStats() {
   const total = HEROES.length;
   const active = HEROES.filter(h => h.status === 'active').length;
   const hikes = HIKES.length;
-  const peaks = new Set(HIKES.flatMap(k => k.peaks).filter(p => altOf(p) >= 2000)).size;
+  const peaks = new Set(HIKES.flatMap(k => k.peaks)).size; // все вершины, как и в плитке героя
   const stat = (n, label) => `
     <div class="stat">
       <span class="stat-num">${n}</span>
@@ -432,7 +435,7 @@ function openModal(id, sourceEl) {
 
     <div class="stat-tiles">
       <div class="tile"><span class="tile-num">${hikesOf(h)}</span><span class="tile-label">хайков</span></div>
-      <div class="tile"><span class="tile-num">${myPeaks.length}</span><span class="tile-label">вершин</span></div>
+      <div class="tile"><span class="tile-num">${allPeaksCount(h)}</span><span class="tile-label">вершин</span></div>
       <div class="tile"><span class="tile-num">${ratingOf(h)}</span><span class="tile-label">рейтинг</span></div>
     </div>
     <p class="rank-place" id="rank-place"></p>

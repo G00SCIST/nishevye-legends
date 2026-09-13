@@ -505,7 +505,17 @@ function closeModal() {
 }
 
 modalClose.addEventListener('click', closeModal);
-modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+// тап по фону закрывает окно, только если палец и опустился, и поднялся на фоне:
+// иначе нажатие, «уехавшее» из-за сдвига вёрстки, закрывало форму вместо кнопки
+const backdropCloser = (el, close) => {
+  let downOnBackdrop = false;
+  el.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === el; });
+  el.addEventListener('click', (e) => {
+    if (e.target === el && downOnBackdrop) close();
+    downOnBackdrop = false;
+  });
+};
+backdropCloser(modal, closeModal);
 
 // ── Шторка с формами (правка, запись хайка) ────────────────
 
@@ -531,7 +541,7 @@ function closeSheet() {
 }
 
 sheetClose.addEventListener('click', closeSheet);
-sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+backdropCloser(sheet, closeSheet);
 
 // ── Клавиатура на телефоне не должна прятать поле ──────────
 // высоту клавиатуры кладём в --kb: снизу появляется запас, куда можно проскроллить
@@ -546,7 +556,11 @@ sheet.addEventListener('focusin', (e) => {
 
 if (window.visualViewport) {
   const vv = window.visualViewport;
+  // пока палец на экране, вёрстку не двигаем: на андроиде фокус уходит на кнопку,
+  // клавиатура закрывается прямо во время нажатия — и кнопка уехала бы из-под пальца
+  let touching = false;
   const sync = () => {
+    if (touching) return;
     // запас под клавиатуру — только когда реально печатают: на некоторых андроидах
     // innerHeight и visualViewport расходятся и без клавиатуры, шторка бы «висела» в воздухе
     const a = document.activeElement;
@@ -555,6 +569,10 @@ if (window.visualViewport) {
     document.documentElement.style.setProperty('--kb', kb + 'px');
     if (kb > 0) scrollFieldIntoView(a);
   };
+  const settle = () => { touching = false; setTimeout(sync, 350); };
+  document.addEventListener('touchstart', () => { touching = true; }, { passive: true, capture: true });
+  document.addEventListener('touchend', settle, { passive: true, capture: true });
+  document.addEventListener('touchcancel', settle, { passive: true, capture: true });
   document.addEventListener('focusout', () => setTimeout(sync, 50));
   vv.addEventListener('resize', sync);
   vv.addEventListener('scroll', sync);
@@ -1392,13 +1410,14 @@ searchEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') searchEl.blur(); // Enter прячет клавиатуру
 });
 
-// экранная клавиатура должна закрываться при тапе мимо поля ввода
+// экранная клавиатура закрывается при тапе по ПУСТОМУ месту.
+// По кнопкам — нет: иначе клавиатура уезжает в момент касания, шторка прыгает вниз,
+// кнопка уплывает из-под пальца, и «Создать карточку» / «Сохранить» не срабатывают.
 document.addEventListener('touchstart', (e) => {
   const a = document.activeElement;
-  if (!a) return;
-  const isField = a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT';
-  const tappedField = e.target.closest?.('input, textarea, select');
-  if (isField && !tappedField) a.blur();
+  if (!a?.matches?.('input, textarea, select')) return;
+  const interactive = e.target.closest?.('input, textarea, select, button, a, label, [role="button"]');
+  if (!interactive) a.blur();
 }, { passive: true });
 
 // ── Фильтр по ролям ────────────────────────────────────────

@@ -26,6 +26,7 @@ const rolesCount = document.getElementById('roles-count');
 
 const fab = document.getElementById('fab');
 const fabSet = document.getElementById('fab-set');
+const meBar = document.getElementById('me-bar');
 const sheet = document.getElementById('sheet');
 const sheetBody = sheet.querySelector('.sheet-body');
 const sheetClose = sheet.querySelector('.sheet-close');
@@ -70,10 +71,57 @@ async function refreshFromDB() {
     buildRolesPanel();
     renderStats();
     render();
+    renderMeBar();
   } catch (e) {
     console.warn('база недоступна, работаем на встроенных данных', e);
   }
 }
+
+// ── «Моя карточка» — постоянный вход в шапке ──────────────
+// Раньше создать карточку можно было только из шторки при первом запуске:
+// нажал «я в команде» или закрыл её — и путь к созданию пропадал навсегда.
+function renderMeBar() {
+  if (!tg?.initData) {
+    // открыто по обычной ссылке, а не через бота — Телеграм не знает, кто это
+    meBar.innerHTML = `
+      <a class="me-cta me-cta-ghost" href="https://t.me/nishevye_legends_bot?startapp">
+        Хочешь свою карточку? Открой через Telegram →
+      </a>`;
+    meBar.hidden = false;
+    return;
+  }
+  if (session.memberId) {
+    const mine = HEROES.find(h => h.id === session.memberId);
+    if (!mine) { meBar.hidden = true; return; } // база ещё грузится
+    meBar.innerHTML = `<button type="button" class="me-cta me-cta-ghost" data-me="open">Моя карточка — ${esc(mine.name)}</button>`;
+  } else if (session.isAdmin) {
+    meBar.hidden = true;
+    return;
+  } else {
+    meBar.innerHTML = `
+      <button type="button" class="me-cta" data-me="create">✦ Создать свою карточку</button>
+      <button type="button" class="me-cta me-cta-ghost" data-me="find">Я уже есть в списке</button>`;
+  }
+  meBar.hidden = false;
+}
+
+function findMyself() {
+  closeSheet();
+  searchEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  searchEl.focus();
+  toast('Найди себя, открой карточку и жми «Это моя карточка»', 4500);
+}
+
+meBar.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-me]');
+  if (!btn) return;
+  if (btn.dataset.me === 'create') openCreateSelf();
+  if (btn.dataset.me === 'find') findMyself();
+  if (btn.dataset.me === 'open') {
+    const el = grid.querySelector(`.card[data-id="${session.memberId}"]`);
+    openModal(session.memberId, el || btn);
+  }
+});
 
 async function api(action, payload) {
   const r = await fetch(API_URL, {
@@ -499,11 +547,15 @@ sheet.addEventListener('focusin', (e) => {
 if (window.visualViewport) {
   const vv = window.visualViewport;
   const sync = () => {
-    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    document.documentElement.style.setProperty('--kb', kb + 'px');
+    // запас под клавиатуру — только когда реально печатают: на некоторых андроидах
+    // innerHeight и visualViewport расходятся и без клавиатуры, шторка бы «висела» в воздухе
     const a = document.activeElement;
-    if (kb > 0 && a?.matches?.('input, textarea')) scrollFieldIntoView(a);
+    const typing = !!a?.matches?.('input, textarea');
+    const kb = typing ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--kb', kb + 'px');
+    if (kb > 0) scrollFieldIntoView(a);
   };
+  document.addEventListener('focusout', () => setTimeout(sync, 50));
   vv.addEventListener('resize', sync);
   vv.addEventListener('scroll', sync);
 }
@@ -579,8 +631,45 @@ function openEditor(h) {
   inner += f('Где сейчас', text('ef-place', h.place));
   inner += f('Коронная фраза', text('ef-quote', h.quote));
   inner += `<button id="ef-save" class="btn btn-primary">Сохранить</button>`;
+  // удаление — только Создателю, не свою карточку, и только когда сервер это уже умеет
+  const canDelete = admin && session.features?.includes('delete_member') && session.memberId !== h.id;
+  if (canDelete) {
+    inner += `<button type="button" id="ef-delete" class="btn btn-ghost btn-danger">Удалить участника</button>`;
+  }
 
   openSheet(inner);
+
+  const del = document.getElementById('ef-delete');
+  del?.addEventListener('click', async () => {
+    const hikes = HIKES.filter(k => k.crew.includes(h.id)).length;
+    if (!del.classList.contains('armed')) {
+      del.classList.add('armed');
+      const word = hikes % 10 === 1 && hikes % 100 !== 11 ? 'хайке' : 'хайках';
+      del.textContent = hikes
+        ? `Точно? ${h.name} пропадёт навсегда вместе с участием в ${hikes} ${word}`
+        : `Точно удалить ${h.name}? Навсегда`;
+      setTimeout(() => {
+        if (del.isConnected && !del.disabled) { del.classList.remove('armed'); del.textContent = 'Удалить участника'; }
+      }, 4000);
+      return;
+    }
+    del.disabled = true;
+    del.textContent = 'Удаляю…';
+    try {
+      await api('delete_member', { id: h.id });
+      await refreshFromDB();
+      closeSheet();
+      closeModal();
+      toast(`${h.name} удалён(а) из зала`);
+      haptic('success');
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      del.disabled = false;
+      del.classList.remove('armed');
+      del.textContent = 'Удалить участника';
+    }
+  });
 
   document.getElementById('ef-hikes')?.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-route]');
@@ -886,7 +975,12 @@ function openSettings() {
   const counts = new Map();
   for (const h of HEROES) for (const r of h.roles) counts.set(r, (counts.get(r) || 0) + 1);
   openSheet(`
-    <h3 class="sheet-title">Перечень ролей</h3>
+    <h3 class="sheet-title">Настройки</h3>
+    <label class="f-label">Участники</label>
+    <button type="button" id="rs-add-member" class="btn btn-ghost btn-block">+ Добавить участника</button>
+    <p class="f-hint">Удалить участника — открой его карточку → «Редактировать» → в самом низу.</p>
+
+    <label class="f-label">Перечень ролей</label>
     <p class="f-hint">Удаление снимает роль у всех, у кого она есть. Тапни ×, потом «точно?» для подтверждения.</p>
     <div id="rs-list" class="chips">${roleDict().map(r => `
       <span class="chip role-manage">${r} <b>${counts.get(r) || 0}</b>
@@ -902,6 +996,8 @@ function openSettings() {
       <button type="button" class="hike-row-btn" data-k="${k.id}">
         <span>${esc(hikeLabel(k))}</span><b>${k.crew.length} чел.</b>
       </button>`).join('')}</div>`);
+
+  document.getElementById('rs-add-member').addEventListener('click', openAddMember);
 
   const list = document.getElementById('rs-list');
   list.addEventListener('click', async (e) => {
@@ -1117,26 +1213,82 @@ function readHikeForm() {
 
 fabSet.addEventListener('click', openSettings);
 
+// ── Добавление участника (Создатель) ───────────────────────
+
+function openAddMember() {
+  openSheet(`
+    <h3 class="sheet-title">Новый участник</h3>
+    <label class="f-label">Имя</label>
+    <input id="am-name" class="f-input" placeholder="Как зовут" autocomplete="off">
+    <label class="f-label">Прозвище (по желанию)</label>
+    <input id="am-nick" class="f-input" placeholder="Как зовут в горах" autocomplete="off">
+    <label class="f-label">Ранг</label>
+    <select id="am-rank" class="f-input">${RANK_ORDER.filter(r => r !== 'creator').map(r =>
+      `<option value="${r}" ${r === 'recruit' ? 'selected' : ''}>${RANKS[r].label}</option>`).join('')}</select>
+    <label class="f-label">Статус</label>
+    <select id="am-status" class="f-input">
+      <option value="active" selected>В строю</option>
+      <option value="gone">Легенда прошлого</option>
+    </select>
+    <label class="f-label">Где сейчас</label>
+    <input id="am-place" class="f-input" value="Токио" autocomplete="off">
+    <button type="button" id="am-save" class="btn btn-primary">Добавить</button>
+    <p class="f-hint">Фото, роли и хайки — потом через «Редактировать». Человек сам привяжет карточку к своему Телеграму кнопкой «Это моя карточка».</p>`);
+
+  document.getElementById('am-save').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const v = (id) => document.getElementById(id).value.trim();
+    const name = v('am-name');
+    if (!name) { toast('Напиши имя'); return; }
+    const hues = [25, 45, 90, 140, 175, 200, 225, 260, 290, 320];
+    const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    btn.disabled = true;
+    btn.textContent = 'Добавляю…';
+    try {
+      await api('add_member', {
+        id,
+        fields: {
+          name,
+          nick: v('am-nick') || null,
+          rank: v('am-rank'),
+          status: v('am-status'),
+          place: v('am-place') || null,
+          hue: hues[Math.floor(Math.random() * hues.length)],
+          roles: [],
+        },
+      });
+      await refreshFromDB();
+      closeSheet();
+      toast(`${name} в зале нишевых`);
+      haptic('success');
+      const el = grid.querySelector(`.card[data-id="${id}"]`);
+      if (el) openModal(id, el);
+    } catch (err) {
+      toast('Не вышло: ' + err.message);
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Добавить';
+    }
+  });
+}
+
 // ── Встреча новичка ────────────────────────────────────────
 
 function openWelcome() {
   openSheet(`
     <h3 class="sheet-title">Добро пожаловать в зал нишевых</h3>
-    <p class="f-hint">Кто ты?</p>
-    <button type="button" id="w-find" class="btn btn-primary">Я в команде — найду свою карточку</button>
-    <button type="button" id="w-create" class="btn btn-ghost btn-block">Меня ещё нет — создать карточку</button>
-    <button type="button" id="w-view" class="btn btn-ghost btn-block">Я зритель — просто посмотреть</button>`);
+    <p class="f-hint">Возможно, Киану уже добавил тебя — сначала поищи себя в списке.</p>
+    <button type="button" id="w-find" class="btn btn-primary">Найти себя в списке</button>
+    <button type="button" id="w-create" class="btn btn-ghost btn-block">Меня там нет — создать карточку</button>
+    <button type="button" id="w-view" class="btn btn-ghost btn-block">Просто посмотреть</button>
+    <p class="f-hint">Кнопка «Создать свою карточку» всегда будет наверху, под счётчиками.</p>`);
 
-  document.getElementById('w-find').addEventListener('click', () => {
-    closeSheet();
-    toast('Найди себя и жми «Это моя карточка»', 4500);
-    searchEl.focus();
-  });
+  document.getElementById('w-find').addEventListener('click', findMyself);
 
   document.getElementById('w-view').addEventListener('click', () => {
     localStorage.setItem('legends_viewer', '1');
     closeSheet();
-    toast('Смотри на здоровье. Захочешь карточку — она ждёт.');
+    toast('Смотри на здоровье. Захочешь карточку — кнопка наверху.');
   });
 
   document.getElementById('w-create').addEventListener('click', openCreateSelf);
@@ -1146,11 +1298,33 @@ function openCreateSelf() {
   openSheet(`
     <h3 class="sheet-title">Твоя карточка</h3>
     <label class="f-label">Имя</label>
-    <input id="cs-name" class="f-input" placeholder="Как тебя зовут">
+    <input id="cs-name" class="f-input" placeholder="Как тебя зовут" autocomplete="off">
+    <div id="cs-suggest"></div>
     <label class="f-label">Прозвище (по желанию)</label>
-    <input id="cs-nick" class="f-input" placeholder="Как тебя зовут в горах">
+    <input id="cs-nick" class="f-input" placeholder="Как тебя зовут в горах" autocomplete="off">
     <button type="button" id="cs-save" class="btn btn-primary">Создать карточку</button>
     <p class="f-hint">Начнёшь Новобранцем. Фото, инсту и фразу добавишь через «Редактировать».</p>`);
+
+  // если в каталоге уже есть свободная карточка с таким именем — предлагаем её, а не дубль
+  const nameInput = document.getElementById('cs-name');
+  const suggest = document.getElementById('cs-suggest');
+  nameInput.addEventListener('input', () => {
+    const q = nameInput.value.trim().toLowerCase();
+    const hits = q.length < 2 ? [] : HEROES
+      .filter(h => !h.claimed && h.name.toLowerCase().startsWith(q))
+      .slice(0, 6);
+    suggest.innerHTML = hits.length ? `
+      <p class="f-hint">Может, это ты? Тапни — откроется карточка, там жми «Это моя карточка»:</p>
+      <div class="chips">${hits.map(h =>
+        `<button type="button" class="role-chip" data-claim="${h.id}">${esc(h.name)}${h.nick ? ` «${esc(h.nick)}»` : ''}</button>`).join('')}</div>` : '';
+  });
+  suggest.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-claim]');
+    if (!b) return;
+    closeSheet();
+    const el = grid.querySelector(`.card[data-id="${b.dataset.claim}"]`);
+    openModal(b.dataset.claim, el || b);
+  });
 
   document.getElementById('cs-save').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -1305,6 +1479,7 @@ async function initTelegram() {
       openWelcome();
     }
   }
+  renderMeBar();
 
   // всё необязательное — строго после и в броне
   try { tg.disableVerticalSwipes?.(); } catch { /* старый клиент */ }

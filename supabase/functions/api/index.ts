@@ -102,7 +102,8 @@ Deno.serve(async (req) => {
       if (myMember && user.username && myMember.tg_username !== user.username) {
         await supa.from('members').update({ tg_username: user.username }).eq('id', myMember.id);
       }
-      return json({ isAdmin, memberId: myMember?.id ?? null, tg: user.id });
+      // features — чтобы фронт показывал кнопки только тех действий, что уже задеплоены
+      return json({ isAdmin, memberId: myMember?.id ?? null, tg: user.id, features: ['delete_member'] });
 
     case 'claim': {
       // привязать себя к свободной карточке; админ может перепривязывать любую
@@ -150,6 +151,22 @@ Deno.serve(async (req) => {
       });
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true, id });
+    }
+
+    case 'delete_member': {
+      // карточка удаляется целиком; участие в хайках снимается каскадом (FK on delete cascade)
+      if (!isAdmin) return json({ error: 'admin only' }, 403);
+      const id = String(p.id ?? '').trim();
+      if (!id) return json({ error: 'id required' }, 400);
+      const { data: target } = await supa
+        .from('members').select('id, telegram_id').eq('id', id).maybeSingle();
+      if (!target) return json({ error: 'not found' }, 404);
+      if (target.telegram_id === user.id) return json({ error: 'нельзя удалить свою карточку' }, 409);
+      // фото не критичны: если их нет — remove просто ничего не найдёт
+      await supa.storage.from('photos').remove([`${id}.jpg`, `${id}_wide.jpg`]);
+      const { error } = await supa.from('members').delete().eq('id', id);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
 
     case 'add_member': {

@@ -126,6 +126,42 @@ header, .controls, main, footer, .empty { position: relative; z-index: 1; }
   color: var(--muted);
 }
 
+/* «Моя карточка» — постоянный вход под счётчиками */
+.me-bar {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.me-bar[hidden] { display: none; }
+
+.me-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a1206;
+  background: linear-gradient(180deg, #ffd77a, var(--gold));
+  box-shadow: 0 10px 26px -10px rgba(240, 180, 60, 0.6);
+  text-decoration: none;
+  transition: filter 0.15s, transform 0.15s;
+}
+
+.me-cta:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
+.me-cta-ghost {
+  color: var(--gold-soft);
+  background: rgba(240, 180, 60, 0.1);
+  border: 1px solid rgba(240, 180, 60, 0.35);
+  box-shadow: none;
+}
+
 /* ── Панель управления ──────────────────────────────────── */
 .controls {
   position: sticky;
